@@ -589,131 +589,299 @@ ${commsMsg}`);
     setAlSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
 
   const renderAlumnos = () => {
-    // filas por alumno+comisión
-    const filasByComision = [];
+  // ----- Construcción de filas por alumno+comisión -----
+  const filasByComision = [];
+  for (const [key, setIds] of alumnosDeComision.entries()) {
+    const [materiaId, com] = key.split("_");
+
+    const fechasSet = new Set(
+      asistDb
+        .filter((r) => r.materiaId === materiaId && r.comision === com)
+        .map((r) => r.fecha)
+    );
+    const totalClases = fechasSet.size;
+
+    for (const alumnoId of setIds) {
+      const alu = alumnosById[alumnoId];
+      if (!alu) continue;
+
+      const recs = asistDb.filter(
+        (r) => r.materiaId === materiaId && r.comision === com && r.alumnoId === alumnoId
+      );
+      const presentes = recs.filter((r) => r.estado === "P").length;
+      const tardes = recs.filter((r) => r.estado === "T").length;
+      const just = justifDb.filter(
+        (j) => j.alumnoId === alumnoId && j.materiaId === materiaId && j.comision === com
+      ).length;
+
+      const pct = totalClases > 0 ? Math.round((presentes / totalClases) * 100) : 0;
+
+      filasByComision.push({
+        id: `${alumnoId}-${key}`,
+        alumnoId,
+        alumno: `${alu.apellido}, ${alu.nombre}`,
+        comision: key,
+        pct,
+        tardes,
+        just,
+        email: alu.email || "-",
+      });
+    }
+  }
+
+  // ----- Agregado por alumno (todas/sólo una comisión) -----
+  const buildRowsByAlumno = (filterCom) => {
+    const acc = new Map(); // alumnoId -> acumulador
+
     for (const [key, setIds] of alumnosDeComision.entries()) {
       const [materiaId, com] = key.split("_");
-      const fechasSet   = new Set(asistDb.filter(r => r.materiaId === materiaId && r.comision === com).map(r => r.fecha));
-      const totalClases = fechasSet.size;
+      if (filterCom !== "todas" && key !== filterCom) continue;
+
+      const fechasSet = new Set(
+        asistDb
+          .filter((r) => r.materiaId === materiaId && r.comision === com)
+          .map((r) => r.fecha)
+      );
+      const clasesCom = fechasSet.size;
 
       for (const alumnoId of setIds) {
-        const alu = alumnosById[alumnoId]; if (!alu) continue;
-        const recs    = asistDb.filter(r => r.materiaId === materiaId && r.comision === com && r.alumnoId === alumnoId);
-        const pres    = recs.filter(r => r.estado === "P").length;
-        const tardes  = recs.filter(r => r.estado === "T").length;
-        const just    = justifDb.filter(j => j.alumnoId === alumnoId && j.materiaId === materiaId && j.comision === com).length;
-        const pct     = totalClases > 0 ? Math.round((pres / totalClases) * 100) : 0;
+        const alu = alumnosById[alumnoId];
+        if (!alu) continue;
 
-        filasByComision.push({
-          id: `${alumnoId}-${key}`,
-          alumnoId,
-          alumno: `${alu.apellido}, ${alu.nombre}`,
-          comision: key,
-          pct,
-          tardes,
-          just,
-          email: alu.email || "-",
-        });
+        if (!acc.has(alumnoId)) {
+          acc.set(alumnoId, {
+            nombre: `${alu.apellido}, ${alu.nombre}`,
+            email: alu.email || "-",
+            coms: new Set(),
+            pres: 0,
+            tard: 0,
+            clases: 0,
+            just: 0,
+          });
+        }
+
+        const slot = acc.get(alumnoId);
+        slot.coms.add(key);
+        slot.clases += clasesCom;
+
+        const recs = asistDb.filter(
+          (r) => r.materiaId === materiaId && r.comision === com && r.alumnoId === alumnoId
+        );
+        slot.pres += recs.filter((r) => r.estado === "P").length;
+        slot.tard += recs.filter((r) => r.estado === "T").length;
+        slot.just += justifDb.filter(
+          (j) => j.alumnoId === alumnoId && j.materiaId === materiaId && j.comision === com
+        ).length;
       }
     }
 
-    // resumen por alumno
-    const buildRowsByAlumno = (filterCom) => {
-      const acc = new Map();
-      for (const [key, setIds] of alumnosDeComision.entries()) {
-        const [materiaId, com] = key.split("_");
-        if (filterCom !== "todas" && key !== filterCom) continue;
+    const rows = [];
+    for (const [alumnoId, v] of acc.entries()) {
+      const pct = v.clases > 0 ? Math.round((v.pres / v.clases) * 100) : 0;
+      rows.push({
+        id: String(alumnoId),
+        alumnoId,
+        alumno: v.nombre,
+        comision: Array.from(v.coms).sort().join(", "),
+        pct,
+        tardes: v.tard,
+        just: v.just,
+        email: v.email,
+      });
+    }
+    return rows;
+  };
 
-        const fechasSet = new Set(asistDb.filter(r => r.materiaId === materiaId && r.comision === com).map(r => r.fecha));
-        const clasesCom = fechasSet.size;
+  const filasByAlumno = buildRowsByAlumno(comiFilter);
 
-        for (const alumnoId of setIds) {
-          const alu = alumnosById[alumnoId]; if (!alu) continue;
-          if (!acc.has(alumnoId)) {
-            acc.set(alumnoId, { nombre: `${alu.apellido}, ${alu.nombre}`, email: alu.email || "-", coms: new Set(), pres: 0, tard: 0, clases: 0, just: 0 });
-          }
-          const slot = acc.get(alumnoId);
-          slot.coms.add(key);
-          slot.clases += clasesCom;
+  // ----- Búsqueda + orden -----
+  const q = alumnosQuery.trim().toLowerCase();
+  const dataset = groupBy === "alumno" ? filasByAlumno : filasByComision;
 
-          const recs = asistDb.filter(r => r.materiaId === materiaId && r.comision === com && r.alumnoId === alumnoId);
-          slot.pres  += recs.filter(r => r.estado === "P").length;
-          slot.tard  += recs.filter(r => r.estado === "T").length;
-          slot.just  += justifDb.filter(j => j.alumnoId === alumnoId && j.materiaId === materiaId && j.comision === com).length;
-        }
-      }
+  const visiblesUnsorted = dataset.filter(
+    (f) =>
+      !q ||
+      f.alumno.toLowerCase().includes(q) ||
+      f.comision.toLowerCase().includes(q) ||
+      f.email.toLowerCase().includes(q)
+  );
 
-      const rows = [];
-      for (const [alumnoId, v] of acc.entries()) {
-        const pct = v.clases > 0 ? Math.round((v.pres / v.clases) * 100) : 0;
-        rows.push({ id: String(alumnoId), alumnoId, alumno: v.nombre, comision: Array.from(v.coms).sort().join(", "), pct, tardes: v.tard, just: v.just, email: v.email });
-      }
-      return rows;
-    };
+  const compareValues = (a, b, key) => {
+    if (["pct", "tardes", "just"].includes(key)) {
+      return (Number(a[key]) || 0) - (Number(b[key]) || 0);
+    }
+    return String(a[key] ?? "").localeCompare(String(b[key] ?? ""), "es", {
+      sensitivity: "base",
+    });
+  };
 
-    const filasByAlumno = buildRowsByAlumno(comiFilter);
+  const visibles = [...visiblesUnsorted].sort((a, b) => {
+    const r = compareValues(a, b, alSort.key);
+    return alSort.dir === "asc" ? r : -r;
+  });
 
-    // búsqueda + orden
-    const q = alumnosQuery.trim().toLowerCase();
-    const dataset  = groupBy === "alumno" ? filasByAlumno : filasByComision;
-    const visiblesUnsorted = dataset.filter(f =>
-      !q || f.alumno.toLowerCase().includes(q) || f.comision.toLowerCase().includes(q) || f.email.toLowerCase().includes(q)
-    );
-    const compare = (a, b, key) => {
-      if (["pct", "tardes", "just"].includes(key)) return (Number(a[key]) || 0) - (Number(b[key]) || 0);
-      return String(a[key] ?? "").localeCompare(String(b[key] ?? ""), "es", { sensitivity: "base" });
-    };
-    const visibles = [...visiblesUnsorted].sort((a, b) => (alSort.dir === "asc" ? compare(a, b, alSort.key) : -compare(a, b, alSort.key)));
+  const colComLabel = groupBy === "alumno" ? "Comisiones" : "Comisión";
+  const arrow = (key) => (alSort.key === key ? (alSort.dir === "asc" ? " ▲" : " ▼") : "");
 
-    const colComLabel = groupBy === "alumno" ? "Comisiones" : "Comisión";
-    const arrow = (key) => (alSort.key === key ? (alSort.dir === "asc" ? " ▲" : " ▼") : "");
+  // ----- UI -----
+  return (
+    <div className="content">
+      <div className="enroll-header header-row">
+        <h1 className="enroll-title m-0">Alumnos</h1>
 
-    return (
-      <div className="content">
-        <div className="enroll-header header-row">
-          <h1 className="enroll-title m-0">Alumnos</h1>
-          <div className="row-center gap-10">
-            <select className="grades-input" value={groupBy} onChange={(e) => setGroupBy(e.target.value)} title="Agrupar">
-              <option value="alumno">Agrupar: Alumno</option>
-              <option value="alumno-comision">Agrupar: Alumno + Comisión</option>
-            </select>
-            <select className="grades-input" value={comiFilter} onChange={(e) => setComiFilter(e.target.value)} title="Filtrar comisión">
-              <option value="todas">Todas las comisiones</option>
-              {comisionesOptions.map(id => <option key={id} value={id}>{id}</option>)}
-            </select>
-            <input className="grades-input w-260" placeholder="Buscar alumno, comisión o correo" value={alumnosQuery} onChange={(e) => setAlumnosQuery(e.target.value)} />
-          </div>
-        </div>
+        <div className="row-center gap-10">
+          <select
+            className="grades-input"
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value)}
+            title="Agrupar"
+          >
+            <option value="alumno">Agrupar: Alumno</option>
+            <option value="alumno-comision">Agrupar: Alumno + Comisión</option>
+          </select>
 
-        <div className="enroll-card card--pad-md">
-          <div className="grades-table-wrap table-scroll">
-            <table className="grades-table w-full">
-              <thead>
-                <tr>
-                  <th className="th-clickable" onClick={() => onSort("alumno")}  aria-sort={alSort.key === "alumno"  ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>Alumno{arrow("alumno")}</th>
-                  <th className="th-clickable" onClick={() => onSort("comision")} aria-sort={alSort.key === "comision" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>{colComLabel}{arrow("comision")}</th>
-                  <th className="th-clickable" onClick={() => onSort("pct")}     aria-sort={alSort.key === "pct"     ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>% Asistencia{arrow("pct")}</th>
-                  <th className="th-clickable" onClick={() => onSort("tardes")}  aria-sort={alSort.key === "tardes"  ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>Tardes{arrow("tardes")}</th>
-                  <th className="th-clickable" onClick={() => onSort("just")}    aria-sort={alSort.key === "just"    ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>Justificaciones{arrow("just")}</th>
-                  <th className="th-clickable" onClick={() => onSort("email")}   aria-sort={alSort.key === "email"   ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>Correo{arrow("email")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibles.map(row => (
-                  <tr key={row.id}>
-                    <td>{row.alumno}</td><td>{row.comision}</td><td>{row.pct}%</td><td>{row.tardes}</td><td>{row.just}</td><td>{row.email}</td>
-                  </tr>
-                ))}
-                {visibles.length === 0 && <tr><td colSpan={6} className="muted text-center">Sin resultados</td></tr>}
-              </tbody>
-            </table>
-          </div>
+          <select
+            className="grades-input"
+            value={comiFilter}
+            onChange={(e) => setComiFilter(e.target.value)}
+            title="Filtrar comisión"
+          >
+            <option value="todas">Todas las comisiones</option>
+            {comisionesOptions.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
 
-          <div className="card__footer--right"><button className="btn" onClick={() => setActive(null)}>Volver</button></div>
+          <input
+            className="grades-input w-260"
+            placeholder="Buscar alumno, comisión o correo"
+            value={alumnosQuery}
+            onChange={(e) => setAlumnosQuery(e.target.value)}
+          />
         </div>
       </div>
-    );
-  };
+
+      <div className="enroll-card card--pad-md">
+        <div className="grades-table-wrap table-scroll">
+          <table className="grades-table w-full">
+            <thead>
+              <tr>
+                <th
+                  className="th-clickable"
+                  onClick={() => onSort("alumno")}
+                  aria-sort={
+                    alSort.key === "alumno"
+                      ? alSort.dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  Alumno{arrow("alumno")}
+                </th>
+                <th
+                  className="th-clickable"
+                  onClick={() => onSort("comision")}
+                  aria-sort={
+                    alSort.key === "comision"
+                      ? alSort.dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  {colComLabel}
+                  {arrow("comision")}
+                </th>
+                <th
+                  className="th-clickable"
+                  onClick={() => onSort("pct")}
+                  aria-sort={
+                    alSort.key === "pct"
+                      ? alSort.dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  % Asistencia{arrow("pct")}
+                </th>
+                <th
+                  className="th-clickable"
+                  onClick={() => onSort("tardes")}
+                  aria-sort={
+                    alSort.key === "tardes"
+                      ? alSort.dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  Tardes{arrow("tardes")}
+                </th>
+                <th
+                  className="th-clickable"
+                  onClick={() => onSort("just")}
+                  aria-sort={
+                    alSort.key === "just"
+                      ? alSort.dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  Justificaciones{arrow("just")}
+                </th>
+                <th
+                  className="th-clickable"
+                  onClick={() => onSort("email")}
+                  aria-sort={
+                    alSort.key === "email"
+                      ? alSort.dir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                >
+                  Correo{arrow("email")}
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {visibles.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.alumno}</td>
+                  <td>{row.comision}</td>
+                  <td>{row.pct}%</td>
+                  <td>{row.tardes}</td>
+                  <td>{row.just}</td>
+                  <td>{row.email}</td>
+                </tr>
+              ))}
+
+              {visibles.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted text-center">
+                    Sin resultados
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="card__footer--right">
+          <button className="btn" onClick={() => setActive(null)}>
+            Volver
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
   // ===== Render: Comunicaciones =====
   const renderComunicaciones = () => (
