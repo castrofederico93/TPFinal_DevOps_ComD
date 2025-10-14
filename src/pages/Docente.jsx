@@ -1,23 +1,38 @@
-import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import "../styles/alumnos.css";
-import { Link, Outlet } from "react-router-dom";
-import Sidebar from "../components/Sidebar";
+import React, { useState } from "react";
+import DocenteSidebar from "../components/DocenteSidebar";
+import CargarNotas from "./docente/CargarNotas";
+import Asistencia from "./docente/Asistencia";
+import Acta from "./docente/Acta";
+import Notificaciones from "./docente/Notificaciones";
+import "../styles/docente.css";
 
 export default function Docente() {
+  const [activeItem, setActiveItem] = useState("inicio");
+
+  const renderVista = () => {
+    switch (activeItem) {
+      case "notas":
+        return <CargarNotas />;
+      case "asistencia":
+        return <Asistencia />;
+      case "actas":
+        return <Acta />;
+      case "notificaciones":
+        return <Notificaciones />;
+      default:
+        return <h3 className="bienvenida">Seleccione una opción del menú</h3>;
+    }
+  };
+
   return (
-    <div className="p-6 font-sans">
-      <h1 className="text-2xl font-bold mb-4">Panel del Docente</h1>
+    <div className="docente-container" style={{ display: "flex" }}>
+      {/* Sidebar */}
+      <DocenteSidebar activeItem={activeItem} setActiveItem={setActiveItem} />
 
-      <nav className="flex gap-4 mb-6">
-        <Link to="panel" className="text-blue-600 hover:underline">Inicio</Link>
-        <Link to="cargar-notas" className="text-blue-600 hover:underline">Cargar Notas</Link>
-        <Link to="asistencia" className="text-blue-600 hover:underline">Asistencia</Link>
-        <Link to="acta" className="text-blue-600 hover:underline">Acta de Cursada</Link>
-        <Link to="notificaciones" className="text-blue-600 hover:underline">Notificaciones</Link>
-      </nav>
-
-      <Outlet />
+      {/* Contenido */}
+      <div className="docente-content" style={{ flex: 1, padding: "20px" }}>
+        {renderVista()}
+      </div>
     </div>
   );
 }

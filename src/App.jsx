@@ -3,6 +3,7 @@ import Login from "./pages/Login.jsx";
 import Alumnos from "./pages/Alumnos.jsx";
 import Preceptor from "./pages/Preceptor.jsx";
 import Administrador from "./pages/Administrador.jsx";
+import Docente from "./pages/Docente.jsx";
 
 export default function App() {
   return (
@@ -12,6 +13,8 @@ export default function App() {
         <Route path="/alumno" element={<Alumnos />} />
         <Route path="/preceptor" element={<Preceptor />} />
         <Route path="/administrador" element={<Administrador />} />
+        <Route path="/docente" element={<Docente />}>
+        </Route>
       </Routes>
     </BrowserRouter>
   );
