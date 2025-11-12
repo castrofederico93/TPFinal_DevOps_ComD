@@ -27,6 +27,9 @@ const fmtFechaHora = (iso) =>
 const ymd = (d) => d.toISOString().slice(0, 10);
 const pad2 = (n) => String(n).padStart(2, "0");
 
+// Backend API
+const API_BASE = import.meta.env?.VITE_API_URL || "http://localhost:3000/api";
+
 // ===== Storage de eventos creados por el preceptor =====
 const CAL_STORAGE_KEY = "pp4_preceptor_eventos";
 
@@ -68,14 +71,14 @@ export default function Preceptor() {
     setPwd2("");
   };
 
-  // ===== Índices / Comisiones =====
+  // ===== Índices / Comisiones (locales para otras vistas) =====
   const alumnosById = useMemo(() => Object.fromEntries(alumnosRaw.map((a) => [a.id, a])), []);
   const docentesById = useMemo(
     () => Object.fromEntries(docentesRaw.map((d) => [d.id, `${d.nombre} ${d.apellido}`])),
     []
   );
 
-  const comisiones = useMemo(
+  const comisionesLocal = useMemo(
     () =>
       materiasRaw.map((m) => ({
         id: `${m.id}_${m.comision}`,
@@ -90,7 +93,32 @@ export default function Preceptor() {
       })),
     []
   );
-  const comisionesOptions = useMemo(() => comisiones.map((c) => c.id), [comisiones]);
+  const comisionesOptions = useMemo(() => comisionesLocal.map((c) => c.id), [comisionesLocal]);
+
+  // ===== NUEVO: Comisiones desde la API para “Mis Comisiones” =====
+  const [comisionesDb, setComisionesDb] = useState([]);
+  const [loadingComs, setLoadingComs] = useState(true);
+  const [errComs, setErrComs] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) { setLoadingComs(false); return; }
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/preceptores/me/comisiones`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        setComisionesDb(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setErrComs(String(e));
+        setComisionesDb([]);
+      } finally {
+        setLoadingComs(false);
+      }
+    })();
+  }, []);
 
   // ===== Asistencias =====
   const [asistDb, setAsistDb] = useState(asistRawBase || []);
@@ -177,7 +205,7 @@ export default function Preceptor() {
 
   const [jfFilter, setJfFilter] = useState("pendiente");
   const [jfQuery, setJfQuery] = useState("");
-  const [jfDraft, setJfDraft] = useState({}); // { [id]: "pendiente"|"aprobada"|"rechazada" }
+  const [jfDraft, setJfDraft] = useState({});
 
   const updateJustifEstado = (id, estado) => setJfDraft((prev) => ({ ...prev, [id]: estado }));
 
@@ -200,20 +228,17 @@ export default function Preceptor() {
   const today = new Date();
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
-  const [calAnimKey, setCalAnimKey] = useState(0); // <- para animar el grid al cambiar mes/año
+  const [calAnimKey, setCalAnimKey] = useState(0);
   const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const DOW_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-  // Eventos del usuario + persistencia
   const [eventosUser, setEventosUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem(CAL_STORAGE_KEY) || "[]"); } catch { return []; }
   });
   useEffect(() => localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(eventosUser)), [eventosUser]);
 
-  // Merge JSON + usuario
   const allEventos = useMemo(() => ([...(eventosRaw || []), ...eventosUser]), [eventosUser]);
 
-  // Cálculos calendario (usando allEventos)
   const eventosMes = useMemo(
     () => (allEventos || []).filter((e) => e.fecha.startsWith(`${calYear}-${pad2(calMonth + 1)}`)),
     [allEventos, calYear, calMonth]
@@ -255,7 +280,7 @@ export default function Preceptor() {
 
   // === Modal de alta/edición de eventos ===
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("add"); // 'add' | 'edit' | 'view'
+  const [modalMode, setModalMode] = useState("add");
   const emptyDraft = useMemo(
     () => ({ id: null, fecha: todayISO, comision: comisionesOptions[0] || "", titulo: "", user: true }),
     [todayISO, comisionesOptions]
@@ -509,49 +534,77 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Mis Comisiones =====
-  const renderMisComisiones = () => (
-    <div className="content">
-      <div className="enroll-header mb-12">
-        <h1 className="enroll-title">Mis Comisiones</h1>
-      </div>
-      <div className="enroll-card card--pad-md">
-        <div className="grades-table-wrap">
-          <table className="grades-table w-full">
-            <thead>
-              <tr>
-                <th>Materia</th>
-                <th>Comisión</th>
-                <th>Horario</th>
-                <th>Sede</th>
-                <th>Aula</th>
-                <th>Docente</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comisiones.map((row) => (
-                <tr key={row.id}>
-                  <td>{row.nombreMateria}</td>
-                  <td>{row.comision}</td>
-                  <td>{row.horario}</td>
-                  <td>{row.sede}</td>
-                  <td>{row.aula}</td>
-                  <td>{docentesById[row.docenteId] || row.docenteId}</td>
-                  <td>{row.estado}</td>
+  // ===== Render: Mis Comisiones (desde DB) =====
+  const renderMisComisiones = () => {
+    const rows = (comisionesDb && comisionesDb.length > 0)
+      ? comisionesDb.map((c) => ({
+          materia: c.materia?.nombre ?? "-",
+          comision: c.comision ?? c.codigo ?? "-",
+          horario: c.horario ?? "-",
+          sede: c.sede ?? "Central",
+          aula: c.aula ?? "A confirmar",
+          docente: c.docente ?? "-",
+          estado: c.estado ?? "Inscripción",
+        }))
+      : comisionesLocal.map((r) => ({
+          materia: r.nombreMateria,
+          comision: r.comision,
+          horario: r.horario,
+          sede: r.sede,
+          aula: r.aula,
+          docente: docentesById[r.docenteId] || "-",
+          estado: r.estado,
+        }));
+
+    return (
+      <div className="content">
+        <div className="enroll-header mb-12">
+          <h1 className="enroll-title">Mis Comisiones</h1>
+        </div>
+        <div className="enroll-card card--pad-md">
+          {loadingComs && <div className="muted">Cargando...</div>}
+          {errComs && !loadingComs && <div className="muted">No se pudieron cargar las comisiones.</div>}
+
+          <div className="grades-table-wrap">
+            <table className="grades-table w-full">
+              <thead>
+                <tr>
+                  <th>Materia</th>
+                  <th>Comisión</th>
+                  <th>Horario</th>
+                  <th>Sede</th>
+                  <th>Aula</th>
+                  <th>Docente</th>
+                  <th>Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="card__footer--right">
-          <button className="btn" onClick={() => setActive(null)}>
-            Volver
-          </button>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.materia}</td>
+                    <td>{row.comision}</td>
+                    <td>{row.horario}</td>
+                    <td>{row.sede}</td>
+                    <td>{row.aula}</td>
+                    <td>{row.docente}</td>
+                    <td>{row.estado}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && !loadingComs && (
+                  <tr><td colSpan={7} className="muted text-center">Sin comisiones asignadas</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="card__footer--right">
+            <button className="btn" onClick={() => setActive(null)}>
+              Volver
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ===== Render: Asistencia =====
   const renderAsistencia = () => (
@@ -744,7 +797,7 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Calendario (interactivo + animado) =====
+  // ===== Render: Calendario =====
   const renderCalendario = () => {
     const colorFromCommission = (com) => {
       if (!com) return "#555";
@@ -826,7 +879,6 @@ ${commsMsg}`);
             })}
           </div>
 
-          {/* Modal de evento */}
           {isModalOpen && (
             <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
               <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -901,13 +953,12 @@ ${commsMsg}`);
 
   // ===== Render: Alumnos =====
   const [alumnosQuery, setAlumnosQuery] = useState("");
-  const [groupBy, setGroupBy] = useState("alumno"); // "alumno" | "alumno-comision"
+  const [groupBy, setGroupBy] = useState("alumno");
   const [comiFilter, setComiFilter] = useState("todas");
   const [alSort, setAlSort] = useState({ key: "alumno", dir: "asc" });
   const onSort = (key) => setAlSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
 
   const renderAlumnos = () => {
-    // Filas por alumno+comisión
     const filasByComision = [];
     for (const [key, setIds] of alumnosDeComision.entries()) {
       const [materiaId, com] = key.split("_");
@@ -944,7 +995,6 @@ ${commsMsg}`);
       }
     }
 
-    // Resumen por alumno (con filtro por comisión)
     const buildRowsByAlumno = (filterCom) => {
       const acc = new Map();
       for (const [key, setIds] of alumnosDeComision.entries()) {
@@ -1006,7 +1056,6 @@ ${commsMsg}`);
 
     const filasByAlumno = buildRowsByAlumno(comiFilter);
 
-    // Búsqueda + orden
     const q = alumnosQuery.trim().toLowerCase();
     const dataset = groupBy === "alumno" ? filasByAlumno : filasByComision;
 

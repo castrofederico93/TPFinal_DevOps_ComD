@@ -1,37 +1,72 @@
 import { Router } from "express";
-import { auth, allowRoles } from "../middlewares/auth.js";
 import prisma from "../db/prisma.js";
+import { auth, allowRoles } from "../middlewares/auth.js";
 
-const r = Router();
-r.use(auth, allowRoles("preceptor"));
+const router = Router();
 
 // GET /api/preceptores/me/datos
-r.get("/me/datos", async (req, res) => {
-  const preceptor = await prisma.preceptores.findFirst({
-    where: { usuario_id: req.user.sub },
-  });
-  if (!preceptor) return res.status(404).json({ error: "Preceptor no encontrado" });
-  return res.json(preceptor);
+router.get("/me/datos", auth, allowRoles("preceptor"), async (req, res, next) => {
+  try {
+    const me = await prisma.preceptores.findFirst({
+      where: { usuario_id: req.user.sub },
+      select: { id: true, nombre: true, apellido: true, usuario_id: true },
+    });
+    if (!me) return res.status(404).json({ error: "Preceptor no encontrado" });
+    res.json(me);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/preceptores/me/comisiones
-r.get("/me/comisiones", async (req, res) => {
-  const preceptor = await prisma.preceptores.findFirst({
-    where: { usuario_id: req.user.sub },
-    select: { id: true },
-  });
-  if (!preceptor) return res.status(404).json({ error: "Preceptor no encontrado" });
+router.get("/me/comisiones", auth, allowRoles("preceptor"), async (req, res, next) => {
+  try {
+    const me = await prisma.preceptores.findFirst({
+      where: { usuario_id: req.user.sub },
+      select: { id: true },
+    });
+    if (!me) return res.status(404).json({ error: "Preceptor no encontrado" });
 
-  const rows = await prisma.preceptor_comision.findMany({
-    where: { preceptor_id: preceptor.id },
-    include: {
-      comision: { include: { materia: true } },
-    },
-  });
+    const vinculos = await prisma.preceptor_comision.findMany({
+      where: { preceptor_id: me.id },
+      select: {
+        comisiones: {
+          select: {
+            id: true,
+            codigo: true,
+            letra: true,
+            horario: true,
+            cupo: true,
+            sede: true,
+            aula: true,
+            estado: true, // requiere la columna (ver punto 2)
+            materias: { select: { id: true, codigo: true, nombre: true } },
+            docentes:  { select: { id: true, nombre: true, apellido: true } },
+          },
+        },
+      },
+      orderBy: { comision_id: "asc" },
+    });
 
-  // aplanado útil
-  const comisiones = rows.map(r => r.comision);
-  return res.json(comisiones);
+    const out = (vinculos || []).map(v => {
+      const c = v.comisiones;
+      return {
+        id: c.id,
+        materia: { id: c.materias?.id, codigo: c.materias?.codigo, nombre: c.materias?.nombre ?? "-" },
+        comision: c.codigo,                    // ej: "MAT-1_A"
+        horario: c.horario || "-",
+        sede: c.sede || "Central",
+        aula: c.aula || "A confirmar",
+        docente: c.docentes ? `${c.docentes.nombre} ${c.docentes.apellido}` : "-",
+        estado: c.estado || "Inscripción",
+        cupo: c.cupo ?? null,
+      };
+    });
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
 });
 
-export default r;
+export default router;
