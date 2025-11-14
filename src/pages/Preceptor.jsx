@@ -12,6 +12,12 @@ import justifRaw from "../data/justificaciones.json";
 import docentesRaw from "../data/docentes.json";
 import eventosRaw from "../data/eventos_calendario.json";
 
+// ===== API SQL (preceptor) =====
+import {
+  fetchPreceptorComisiones,
+  fetchPreceptorAlumnosMetrics,
+} from "../lib/preceptor.api";
+
 // ===== Constantes / Utils =====
 const CLASES_DE_HOY = [
   { id: 1, materia: "Prácticas Profesionalizantes", comision: "P4-2025", horario: "18:00–20:00", aula: "Lab 3" },
@@ -26,9 +32,6 @@ const fmtFechaHora = (iso) =>
 
 const ymd = (d) => d.toISOString().slice(0, 10);
 const pad2 = (n) => String(n).padStart(2, "0");
-
-// Backend API
-const API_BASE = import.meta.env?.VITE_API_URL || "http://localhost:3000/api";
 
 // ===== Storage de eventos creados por el preceptor =====
 const CAL_STORAGE_KEY = "pp4_preceptor_eventos";
@@ -71,7 +74,7 @@ export default function Preceptor() {
     setPwd2("");
   };
 
-  // ===== Índices / Comisiones (locales para otras vistas) =====
+  // ===== Índices / Comisiones (JSON, usados en otros paneles todavía) =====
   const alumnosById = useMemo(() => Object.fromEntries(alumnosRaw.map((a) => [a.id, a])), []);
   const docentesById = useMemo(
     () => Object.fromEntries(docentesRaw.map((d) => [d.id, `${d.nombre} ${d.apellido}`])),
@@ -95,24 +98,38 @@ export default function Preceptor() {
   );
   const comisionesOptions = useMemo(() => comisionesLocal.map((c) => c.id), [comisionesLocal]);
 
-  // ===== NUEVO: Comisiones desde la API para “Mis Comisiones” =====
+  // ===== Comisiones desde la API (SQL) =====
   const [comisionesDb, setComisionesDb] = useState([]);
   const [loadingComs, setLoadingComs] = useState(true);
   const [errComs, setErrComs] = useState(null);
 
+  // ===== Métricas de alumnos desde la API (SQL) =====
+  const [alumnosMetrics, setAlumnosMetrics] = useState([]);
+  const [loadingAlumnos, setLoadingAlumnos] = useState(true);
+  const [errAlumnos, setErrAlumnos] = useState(null);
+
+  // Opciones de comisiones desde datos SQL (para filtros del panel Alumnos)
+  const comisionesDbOptions = useMemo(() => {
+    const s = new Set();
+    comisionesDb.forEach((c) => {
+      if (c.comision) s.add(c.comision);
+    });
+    alumnosMetrics.forEach((r) => {
+      if (r.comisionCodigo) s.add(r.comisionCodigo);
+    });
+    return Array.from(s).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [comisionesDb, alumnosMetrics]);
+
+  // Carga de comisiones SQL
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) { setLoadingComs(false); return; }
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/preceptores/me/comisiones`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        setLoadingComs(true);
+        setErrComs(null);
+        const data = await fetchPreceptorComisiones();
         setComisionesDb(Array.isArray(data) ? data : []);
       } catch (e) {
-        setErrComs(String(e));
+        setErrComs(e.message || String(e));
         setComisionesDb([]);
       } finally {
         setLoadingComs(false);
@@ -120,7 +137,24 @@ export default function Preceptor() {
     })();
   }, []);
 
-  // ===== Asistencias =====
+  // Carga de métricas de alumnos SQL
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoadingAlumnos(true);
+        setErrAlumnos(null);
+        const data = await fetchPreceptorAlumnosMetrics();
+        setAlumnosMetrics(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setErrAlumnos(e.message || String(e));
+        setAlumnosMetrics([]);
+      } finally {
+        setLoadingAlumnos(false);
+      }
+    })();
+  }, []);
+
+  // ===== Asistencias (JSON todavía) =====
   const [asistDb, setAsistDb] = useState(asistRawBase || []);
   const [comisionSel, setComisionSel] = useState(() => comisionesOptions[0] || "");
 
@@ -149,7 +183,7 @@ export default function Preceptor() {
     }
   }, [dateOptions, fechaAsis, todayISO]);
 
-  // Alumnos por comisión (derivado de calificaciones)
+  // Alumnos por comisión (desde calificaciones JSON, usado en otros paneles)
   const alumnosDeComision = useMemo(() => {
     const map = new Map();
     for (const r of califsRaw) {
@@ -195,7 +229,7 @@ export default function Preceptor() {
     alert("Asistencia guardada (mock en memoria).");
   };
 
-  // ===== Justificaciones (LS + borradores) =====
+  // ===== Justificaciones (LS + JSON) =====
   const JUSTI_STORAGE_KEY = "pp4_preceptor_justificaciones";
 
   const [justifDb, setJustifDb] = useState(() => {
@@ -210,7 +244,9 @@ export default function Preceptor() {
   const updateJustifEstado = (id, estado) => setJfDraft((prev) => ({ ...prev, [id]: estado }));
 
   const guardarJustificaciones = () => {
-    const merged = (justifDb || []).map((j) => (jfDraft[j.id] !== undefined ? { ...j, estado: jfDraft[j.id] } : j));
+    const merged = (justifDb || []).map((j) =>
+      jfDraft[j.id] !== undefined ? { ...j, estado: jfDraft[j.id] } : j
+    );
     setJustifDb(merged);
     localStorage.setItem(JUSTI_STORAGE_KEY, JSON.stringify(merged));
     setJfDraft({});
@@ -220,7 +256,9 @@ export default function Preceptor() {
   const verDocumento = (url) => (url ? window.open(url, "_blank") : alert("No hay documento adjunto."));
 
   const pendingJustCount = useMemo(() => {
-    const overlay = (justifDb || []).map((j) => (jfDraft[j.id] !== undefined ? { ...j, estado: jfDraft[j.id] } : j));
+    const overlay = (justifDb || []).map((j) =>
+      jfDraft[j.id] !== undefined ? { ...j, estado: jfDraft[j.id] } : j
+    );
     return overlay.filter((j) => j.estado === "pendiente").length;
   }, [justifDb, jfDraft]);
 
@@ -229,11 +267,18 @@ export default function Preceptor() {
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calAnimKey, setCalAnimKey] = useState(0);
-  const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const MESES_ES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
   const DOW_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
   const [eventosUser, setEventosUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(CAL_STORAGE_KEY) || "[]"); } catch { return []; }
+    try {
+      return JSON.parse(localStorage.getItem(CAL_STORAGE_KEY) || "[]");
+    } catch {
+      return [];
+    }
   });
   useEffect(() => localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(eventosUser)), [eventosUser]);
 
@@ -257,7 +302,10 @@ export default function Preceptor() {
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const firstDow = new Date(calYear, calMonth, 1).getDay();
   const cells = useMemo(
-    () => [...Array.from({ length: firstDow }, () => null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)],
+    () => [
+      ...Array.from({ length: firstDow }, () => null),
+      ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+    ],
     [firstDow, daysInMonth]
   );
 
@@ -286,7 +334,9 @@ export default function Preceptor() {
     [todayISO, comisionesOptions]
   );
   const [draft, setDraft] = useState(emptyDraft);
-  useEffect(() => { if (!isModalOpen) setDraft(emptyDraft); }, [isModalOpen, emptyDraft]);
+  useEffect(() => {
+    if (!isModalOpen) setDraft(emptyDraft);
+  }, [isModalOpen, emptyDraft]);
 
   const openAddModal = (isoDate) => {
     setModalMode("add");
@@ -315,7 +365,11 @@ export default function Preceptor() {
       setEventosUser((prev) => [...prev, nuevo]);
     } else if (modalMode === "edit") {
       setEventosUser((prev) =>
-        prev.map((e) => (e.id === draft.id ? { ...e, fecha: draft.fecha, comision: draft.comision, titulo: draft.titulo } : e))
+        prev.map((e) =>
+          e.id === draft.id
+            ? { ...e, fecha: draft.fecha, comision: draft.comision, titulo: draft.titulo }
+            : e
+        )
       );
     }
     setIsModalOpen(false);
@@ -327,7 +381,7 @@ export default function Preceptor() {
     setIsModalOpen(false);
   };
 
-  // ===== Comunicaciones =====
+  // ===== Comunicaciones (JSON) =====
   const [commsSubject, setCommsSubject] = useState("");
   const [commsComSel, setCommsComSel] = useState("");
   const [commsComs, setCommsComs] = useState([]);
@@ -352,7 +406,10 @@ export default function Preceptor() {
       const ids = alumnosDeComision.get(key) || new Set();
       return Array.from(ids).map((uid) => alumnosById[uid]?.email).filter(Boolean);
     });
-    const mailsOtros = commsOtros.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+    const mailsOtros = commsOtros
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     return Array.from(new Set([...mailsFromComs, ...mailsOtros]));
   }, [commsComs, commsOtros, alumnosDeComision, alumnosById]);
 
@@ -372,7 +429,7 @@ ${commsMsg}`);
     setCommsComs([]);
   };
 
-  // ===== Notificaciones (JSON + LS) =====
+  // ===== Notificaciones =====
   const preceptorId = Number(localStorage.getItem("userId"));
   const toIso = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T09:00:00` : d);
 
@@ -382,7 +439,8 @@ ${commsMsg}`);
       .filter(
         (n) =>
           n.destino === "todos" ||
-          (n.destino === "preceptor" && (!n.usuarioId || !hasUserId || n.usuarioId === preceptorId))
+          (n.destino === "preceptor" &&
+            (!n.usuarioId || !hasUserId || n.usuarioId === preceptorId))
       )
       .map((n) => ({
         id: `N-${n.id}`,
@@ -408,15 +466,27 @@ ${commsMsg}`);
   const [notiFilter, setNotiFilter] = useState("todas");
   const [notiQuery, setNotiQuery] = useState("");
 
-  const toggleLeida = (id) => setNotis((p) => p.map((n) => (n.id === id ? { ...n, leida: !n.leida } : n)));
-  const toggleFav = (id) => setNotis((p) => p.map((n) => (n.id === id ? { ...n, fav: !n.fav } : n)));
-  const eliminarNoti = (id) => setNotis((p) => p.filter((n) => n.id !== id));
+  const toggleLeida = (id) =>
+    setNotis((p) => p.map((n) => (n.id === id ? { ...n, leida: !n.leida } : n)));
+  const toggleFav = (id) =>
+    setNotis((p) => p.map((n) => (n.id === id ? { ...n, fav: !n.fav } : n)));
+  const eliminarNoti = (id) =>
+    setNotis((p) => p.filter((n) => n.id !== id));
 
   const notisVisibles = useMemo(() => {
     const q = notiQuery.trim().toLowerCase();
     return notis
-      .filter((n) => (notiFilter === "todas" ? true : notiFilter === "no-leidas" ? !n.leida : n.fav))
-      .filter((n) => !q || (n.titulo + " " + (n.texto || "")).toLowerCase().includes(q))
+      .filter((n) =>
+        notiFilter === "todas"
+          ? true
+          : notiFilter === "no-leidas"
+          ? !n.leida
+          : n.fav
+      )
+      .filter((n) =>
+        !q ||
+        (n.titulo + " " + (n.texto || "")).toLowerCase().includes(q)
+      )
       .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
   }, [notis, notiFilter, notiQuery]);
 
@@ -440,7 +510,11 @@ ${commsMsg}`);
 
   // ===== Render: Inicio =====
   const renderInicio = () => {
-    const hoy = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const hoy = new Date().toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
     const pendientes = pendingJustCount;
 
     return (
@@ -488,8 +562,13 @@ ${commsMsg}`);
                   <h3 className="enroll-title">Justificaciones pendientes</h3>
                 </div>
                 <div className="row-center gap-12">
-                  <div className="enroll-col__head minw-60 text-center">{pendientes}</div>
-                  <button className="btn btn-primary" onClick={() => setActive("justificaciones")}>
+                  <div className="enroll-col__head minw-60 text-center">
+                    {pendientes}
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setActive("justificaciones")}
+                  >
                     Ir a Justificaciones
                   </button>
                 </div>
@@ -534,27 +613,20 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Mis Comisiones (desde DB) =====
+  // ===== Render: Mis Comisiones (SQL) =====
   const renderMisComisiones = () => {
-    const rows = (comisionesDb && comisionesDb.length > 0)
-      ? comisionesDb.map((c) => ({
-          materia: c.materia?.nombre ?? "-",
-          comision: c.comision ?? c.codigo ?? "-",
-          horario: c.horario ?? "-",
-          sede: c.sede ?? "Central",
-          aula: c.aula ?? "A confirmar",
-          docente: c.docente ?? "-",
-          estado: c.estado ?? "Inscripción",
-        }))
-      : comisionesLocal.map((r) => ({
-          materia: r.nombreMateria,
-          comision: r.comision,
-          horario: r.horario,
-          sede: r.sede,
-          aula: r.aula,
-          docente: docentesById[r.docenteId] || "-",
-          estado: r.estado,
-        }));
+    const rows =
+      comisionesDb && comisionesDb.length > 0
+        ? comisionesDb.map((c) => ({
+            materia: c.materia?.nombre ?? "-",
+            comision: c.comision ?? "-",
+            horario: c.horario ?? "-",
+            sede: c.sede ?? "Central",
+            aula: c.aula ?? "A confirmar",
+            docente: c.docente ?? "-",
+            estado: c.estado ?? "Inscripción",
+          }))
+        : [];
 
     return (
       <div className="content">
@@ -562,8 +634,10 @@ ${commsMsg}`);
           <h1 className="enroll-title">Mis Comisiones</h1>
         </div>
         <div className="enroll-card card--pad-md">
-          {loadingComs && <div className="muted">Cargando...</div>}
-          {errComs && !loadingComs && <div className="muted">No se pudieron cargar las comisiones.</div>}
+          {loadingComs && <div className="muted">Cargando comisiones...</div>}
+          {errComs && !loadingComs && (
+            <div className="muted">No se pudieron cargar las comisiones.</div>
+          )}
 
           <div className="grades-table-wrap">
             <table className="grades-table w-full">
@@ -590,8 +664,12 @@ ${commsMsg}`);
                     <td>{row.estado}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && !loadingComs && (
-                  <tr><td colSpan={7} className="muted text-center">Sin comisiones asignadas</td></tr>
+                {rows.length === 0 && !loadingComs && !errComs && (
+                  <tr>
+                    <td colSpan={7} className="muted text-center">
+                      Sin comisiones asignadas
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -606,7 +684,7 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Asistencia =====
+  // ===== Render: Asistencia (JSON) =====
   const renderAsistencia = () => (
     <div className="content">
       <div className="enroll-header mb-6">
@@ -615,7 +693,11 @@ ${commsMsg}`);
 
       <div className="filters-row">
         <span className="label">Comisión:</span>
-        <select className="grades-input w-220" value={comisionSel} onChange={(e) => setComisionSel(e.target.value)}>
+        <select
+          className="grades-input w-220"
+          value={comisionSel}
+          onChange={(e) => setComisionSel(e.target.value)}
+        >
           {comisionesOptions.map((id) => (
             <option key={id} value={id}>
               {id}
@@ -624,7 +706,11 @@ ${commsMsg}`);
         </select>
 
         <span className="label ml-18">Fecha:</span>
-        <select className="grades-input w-220" value={fechaAsis} onChange={(e) => setFechaAsis(e.target.value)}>
+        <select
+          className="grades-input w-220"
+          value={fechaAsis}
+          onChange={(e) => setFechaAsis(e.target.value)}
+        >
           {dateOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
@@ -651,7 +737,11 @@ ${commsMsg}`);
                   <td>{a.nombre}</td>
                   <td>{a.dni}</td>
                   <td>
-                    <select className="grades-input" value={a.estado} onChange={(e) => setEstado(a.id, e.target.value)}>
+                    <select
+                      className="grades-input"
+                      value={a.estado}
+                      onChange={(e) => setEstado(a.id, e.target.value)}
+                    >
                       <option value=""></option>
                       <option value="P">P</option>
                       <option value="A">A</option>
@@ -686,7 +776,7 @@ ${commsMsg}`);
     </div>
   );
 
-  // ===== Render: Justificaciones =====
+  // ===== Render: Justificaciones (JSON) =====
   const renderJustificaciones = () => {
     const norm = (s = "") => s.toString().toLowerCase();
     const tokens = norm(jfQuery).trim().split(" ").filter(Boolean);
@@ -722,7 +812,11 @@ ${commsMsg}`);
 
         <div className="filters-row">
           <span className="label">Filtro</span>
-          <select className="grades-input" value={jfFilter} onChange={(e) => setJfFilter(e.target.value)}>
+          <select
+            className="grades-input"
+            value={jfFilter}
+            onChange={(e) => setJfFilter(e.target.value)}
+          >
             <option value="pendiente">Pendientes</option>
             <option value="aprobada">Aprobadas</option>
             <option value="rechazada">Rechazadas</option>
@@ -766,8 +860,14 @@ ${commsMsg}`);
                       <td>
                         <select
                           className="grades-input"
-                          value={jfDraft[j.id] !== undefined ? jfDraft[j.id] : j.estado}
-                          onChange={(e) => updateJustifEstado(j.id, e.target.value)}
+                          value={
+                            jfDraft[j.id] !== undefined
+                              ? jfDraft[j.id]
+                              : j.estado
+                          }
+                          onChange={(e) =>
+                            updateJustifEstado(j.id, e.target.value)
+                          }
                         >
                           <option value="pendiente">Pendiente</option>
                           <option value="aprobada">Aprobada</option>
@@ -776,7 +876,10 @@ ${commsMsg}`);
                       </td>
                       <td>{j.motivo || "-"}</td>
                       <td>
-                        <button className="btn" onClick={() => verDocumento(j.documentoUrl)}>
+                        <button
+                          className="btn"
+                          onClick={() => verDocumento(j.documentoUrl)}
+                        >
                           Ver
                         </button>
                       </td>
@@ -787,22 +890,30 @@ ${commsMsg}`);
             </table>
           </div>
 
-        <div className="card__actions--center">
-            <button className="btn btn--success" onClick={guardarJustificaciones}>Guardar</button>
+          <div className="card__actions--center">
+            <button
+              className="btn btn--success"
+              onClick={guardarJustificaciones}
+            >
+              Guardar
+            </button>
             <div className="spacer-12" />
-            <button className="btn" onClick={() => setActive(null)}>Volver</button>
+            <button className="btn" onClick={() => setActive(null)}>
+              Volver
+            </button>
           </div>
         </div>
       </div>
     );
   };
 
-  // ===== Render: Calendario =====
+  // ===== Render: Calendario (JSON/LS) =====
   const renderCalendario = () => {
     const colorFromCommission = (com) => {
       if (!com) return "#555";
       let h = 0;
-      for (let i = 0; i < com.length; i++) h = ((h << 5) - h) + com.charCodeAt(i);
+      for (let i = 0; i < com.length; i++)
+        h = ((h << 5) - h) + com.charCodeAt(i);
       return `hsl(${Math.abs(h) % 360}, 70%, 42%)`;
     };
 
@@ -816,7 +927,10 @@ ${commsMsg}`);
               <select
                 className="grades-input"
                 value={calYear}
-                onChange={(e) => { setCalYear(Number(e.target.value)); setCalAnimKey(k => k + 1); }}
+                onChange={(e) => {
+                  setCalYear(Number(e.target.value));
+                  setCalAnimKey((k) => k + 1);
+                }}
               >
                 {years.map((y) => (
                   <option key={y} value={y}>
@@ -828,7 +942,10 @@ ${commsMsg}`);
               <select
                 className="grades-input"
                 value={calMonth}
-                onChange={(e) => { setCalMonth(Number(e.target.value)); setCalAnimKey(k => k + 1); }}
+                onChange={(e) => {
+                  setCalMonth(Number(e.target.value));
+                  setCalAnimKey((k) => k + 1);
+                }}
               >
                 {MESES_ES.map((m, i) => (
                   <option key={m} value={i}>
@@ -840,7 +957,7 @@ ${commsMsg}`);
           </div>
 
           <div className="calendar__dow">
-            {["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].map((d) => (
+            {DOW_ES.map((d) => (
               <div key={d} className="calendar__dow-item">
                 {d}
               </div>
@@ -849,7 +966,13 @@ ${commsMsg}`);
 
           <div className="calendar__grid cal-anim" key={calAnimKey}>
             {cells.map((day, idx) => {
-              if (day === null) return <div key={`b-${idx}`} className="calendar__cell calendar__cell--empty" />;
+              if (day === null)
+                return (
+                  <div
+                    key={`b-${idx}`}
+                    className="calendar__cell calendar__cell--empty"
+                  />
+                );
               const dateISO = `${calYear}-${pad2(calMonth + 1)}-${pad2(day)}`;
               const dayEvents = eventosPorDia.get(day) || [];
               return (
@@ -867,10 +990,17 @@ ${commsMsg}`);
                         className="calendar__pill calendar__pill--clickable"
                         style={{ background: colorFromCommission(ev.comision) }}
                         title={`${ev.titulo} — ${ev.comision}`}
-                        onClick={(e) => { e.stopPropagation(); openEditModal(ev); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(ev);
+                        }}
                       >
-                        <div className="calendar__pill-title">{ev.titulo}</div>
-                        <div className="calendar__pill-sub">{ev.comision}</div>
+                        <div className="calendar__pill-title">
+                          {ev.titulo}
+                        </div>
+                        <div className="calendar__pill-sub">
+                          {ev.comision}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -880,10 +1010,17 @@ ${commsMsg}`);
           </div>
 
           {isModalOpen && (
-            <div className="modal-backdrop" onClick={() => setIsModalOpen(false)}>
+            <div
+              className="modal-backdrop"
+              onClick={() => setIsModalOpen(false)}
+            >
               <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <h3 className="modal-title">
-                  {modalMode === "add" ? "Agregar evento" : modalMode === "edit" ? "Editar evento" : "Detalle de evento"}
+                  {modalMode === "add"
+                    ? "Agregar evento"
+                    : modalMode === "edit"
+                    ? "Editar evento"
+                    : "Detalle de evento"}
                 </h3>
 
                 <div className="form-row">
@@ -892,7 +1029,9 @@ ${commsMsg}`);
                     type="date"
                     className="grades-input"
                     value={draft.fecha}
-                    onChange={(e) => setDraft({ ...draft, fecha: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, fecha: e.target.value })
+                    }
                     disabled={modalMode === "view"}
                   />
                 </div>
@@ -902,11 +1041,15 @@ ${commsMsg}`);
                   <select
                     className="grades-input"
                     value={draft.comision}
-                    onChange={(e) => setDraft({ ...draft, comision: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, comision: e.target.value })
+                    }
                     disabled={modalMode === "view"}
                   >
                     {comisionesOptions.map((id) => (
-                      <option key={id} value={id}>{id}</option>
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -917,25 +1060,42 @@ ${commsMsg}`);
                     className="grades-input w-280"
                     placeholder="Título del evento"
                     value={draft.titulo}
-                    onChange={(e) => setDraft({ ...draft, titulo: e.target.value })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, titulo: e.target.value })
+                    }
                     disabled={modalMode === "view"}
                   />
                 </div>
 
                 <div className="modal-actions">
-                  <button className="btn" onClick={() => setIsModalOpen(false)}>Cerrar</button>
+                  <button
+                    className="btn"
+                    onClick={() => setIsModalOpen(false)}
+                  >
+                    Cerrar
+                  </button>
                   {modalMode === "edit" && (
-                    <button className="btn btn--danger" onClick={deleteDraft}>Eliminar</button>
+                    <button
+                      className="btn btn--danger"
+                      onClick={deleteDraft}
+                    >
+                      Eliminar
+                    </button>
                   )}
                   {modalMode !== "view" && (
-                    <button className="btn btn--success" onClick={saveDraft}>
+                    <button
+                      className="btn btn--success"
+                      onClick={saveDraft}
+                    >
                       {modalMode === "add" ? "Agregar" : "Guardar"}
                     </button>
                   )}
                 </div>
 
                 {modalMode === "view" && (
-                  <p className="muted mt-16">Evento institucional (no editable).</p>
+                  <p className="muted mt-16">
+                    Evento institucional (no editable).
+                  </p>
                 )}
               </div>
             </div>
@@ -951,121 +1111,149 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Alumnos =====
+  // ===== Render: Alumnos (SQL) =====
   const [alumnosQuery, setAlumnosQuery] = useState("");
-  const [groupBy, setGroupBy] = useState("alumno");
+  const [groupBy, setGroupBy] = useState("alumno"); // 'alumno' o 'alumno-comision'
   const [comiFilter, setComiFilter] = useState("todas");
   const [alSort, setAlSort] = useState({ key: "alumno", dir: "asc" });
-  const onSort = (key) => setAlSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
+  const onSort = (key) =>
+    setAlSort((s) => ({
+      key,
+      dir: s.key === key && s.dir === "asc" ? "desc" : "asc",
+    }));
 
   const renderAlumnos = () => {
-    const filasByComision = [];
-    for (const [key, setIds] of alumnosDeComision.entries()) {
-      const [materiaId, com] = key.split("_");
-      const fechasSet = new Set(
-        asistDb.filter((r) => r.materiaId === materiaId && r.comision === com).map((r) => r.fecha)
+    if (loadingAlumnos) {
+      return (
+        <div className="content">
+          <div className="enroll-header mb-12">
+            <h1 className="enroll-title">Alumnos</h1>
+          </div>
+          <div className="enroll-card card--pad-md">
+            <div className="muted">Cargando métricas de alumnos...</div>
+          </div>
+        </div>
       );
-      const totalClases = fechasSet.size;
-
-      for (const alumnoId of setIds) {
-        const alu = alumnosById[alumnoId];
-        if (!alu) continue;
-
-        const recs = asistDb.filter(
-          (r) => r.materiaId === materiaId && r.comision === com && r.alumnoId === alumnoId
-        );
-        const presentes = recs.filter((r) => r.estado === "P").length;
-        const tardes = recs.filter((r) => r.estado === "T").length;
-        const just = justifDb.filter(
-          (j) => j.alumnoId === alumnoId && j.materiaId === materiaId && j.comision === com
-        ).length;
-
-        const pct = totalClases > 0 ? Math.round((presentes / totalClases) * 100) : 0;
-
-        filasByComision.push({
-          id: `${alumnoId}-${key}`,
-          alumnoId,
-          alumno: `${alu.apellido}, ${alu.nombre}`,
-          comision: key,
-          pct,
-          tardes,
-          just,
-          email: alu.email || "-",
-        });
-      }
     }
 
-    const buildRowsByAlumno = (filterCom) => {
+    if (errAlumnos) {
+      return (
+        <div className="content">
+          <div className="enroll-header mb-12">
+            <h1 className="enroll-title">Alumnos</h1>
+          </div>
+          <div className="enroll-card card--pad-md">
+            <div className="muted">
+              No se pudieron cargar las métricas de alumnos.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const baseRowsByComision = alumnosMetrics.map((r) => {
+  const presentes = Number(r.presentes) || 0;
+  const totalClases = Number(r.totalClases) || 0;
+  const tardes = Number(r.tardes) || 0;
+  const justificaciones = Number(r.justificaciones) || 0;
+
+  const pct = totalClases > 0 ? Math.round((presentes / totalClases) * 100) : 0;
+
+  return {
+    id: `${r.alumnoId}-${r.comisionId}`,
+    alumnoId: r.alumnoId,
+    alumno: r.alumno,
+    comision: r.comisionCodigo || "-",
+    pct,
+    tardes,
+    just: justificaciones,
+    email: r.email || "-",
+    presentes,
+    totalClases,
+  };
+});
+
+    const q = alumnosQuery.trim().toLowerCase();
+
+    const filteredByComision =
+      comiFilter === "todas"
+        ? baseRowsByComision
+        : baseRowsByComision.filter((r) => r.comision === comiFilter);
+
+    const buildRowsByAlumno = () => {
       const acc = new Map();
-      for (const [key, setIds] of alumnosDeComision.entries()) {
-        const [materiaId, com] = key.split("_");
-        if (filterCom !== "todas" && key !== filterCom) continue;
-
-        const fechasSet = new Set(
-          asistDb.filter((r) => r.materiaId === materiaId && r.comision === com).map((r) => r.fecha)
-        );
-        const clasesCom = fechasSet.size;
-
-        for (const alumnoId of setIds) {
-          const alu = alumnosById[alumnoId];
-          if (!alu) continue;
-
-          if (!acc.has(alumnoId)) {
-            acc.set(alumnoId, {
-              nombre: `${alu.apellido}, ${alu.nombre}`,
-              email: alu.email || "-",
-              coms: new Set(),
-              pres: 0,
-              tard: 0,
-              clases: 0,
-              just: 0,
-            });
-          }
-
-          const slot = acc.get(alumnoId);
-          slot.coms.add(key);
-          slot.clases += clasesCom;
-
-          const recs = asistDb.filter(
-            (r) => r.materiaId === materiaId && r.comision === com && r.alumnoId === alumnoId
-          );
-          slot.pres += recs.filter((r) => r.estado === "P").length;
-          slot.tard += recs.filter((r) => r.estado === "T").length;
-          slot.just += justifDb.filter(
-            (j) => j.alumnoId === alumnoId && j.materiaId === materiaId && j.comision === com
-          ).length;
+      for (const row of filteredByComision) {
+        const key = row.alumnoId;
+        if (!acc.has(key)) {
+          acc.set(key, {
+            id: String(row.alumnoId),
+            alumnoId: row.alumnoId,
+            alumno: row.alumno,
+            comisiones: new Set(),
+            presentes: 0,
+            totalClases: 0,
+            tardes: 0,
+            just: 0,
+            email: row.email,
+          });
         }
+        const slot = acc.get(key);
+        slot.comisiones.add(row.comision);
+        slot.presentes += row.presentes;
+        slot.totalClases += row.totalClases;
+        slot.tardes += row.tardes;
+        slot.just += row.just;
       }
 
       const rows = [];
-      for (const [alumnoId, v] of acc.entries()) {
-        const pct = v.clases > 0 ? Math.round((v.pres / v.clases) * 100) : 0;
+      for (const slot of acc.values()) {
+        const pct =
+          slot.totalClases > 0
+            ? Math.round((slot.presentes / slot.totalClases) * 100)
+            : 0;
         rows.push({
-          id: String(alumnoId),
-          alumnoId,
-          alumno: v.nombre,
-          comision: Array.from(v.coms).sort().join(", "),
+          id: slot.id,
+          alumnoId: slot.alumnoId,
+          alumno: slot.alumno,
+          comision: Array.from(slot.comisiones).sort().join(", "),
           pct,
-          tardes: v.tard,
-          just: v.just,
-          email: v.email,
+          tardes: slot.tardes,
+          just: slot.just,
+          email: slot.email,
         });
       }
       return rows;
     };
 
-    const filasByAlumno = buildRowsByAlumno(comiFilter);
-
-    const q = alumnosQuery.trim().toLowerCase();
-    const dataset = groupBy === "alumno" ? filasByAlumno : filasByComision;
+    const dataset =
+      groupBy === "alumno"
+        ? buildRowsByAlumno()
+        : filteredByComision.map((r) => ({
+            id: r.id,
+            alumnoId: r.alumnoId,
+            alumno: r.alumno,
+            comision: r.comision,
+            pct: r.pct,
+            tardes: r.tardes,
+            just: r.just,
+            email: r.email,
+          }));
 
     const visiblesUnsorted = dataset.filter(
-      (f) => !q || f.alumno.toLowerCase().includes(q) || f.comision.toLowerCase().includes(q) || f.email.toLowerCase().includes(q)
+      (f) =>
+        !q ||
+        f.alumno.toLowerCase().includes(q) ||
+        f.comision.toLowerCase().includes(q) ||
+        f.email.toLowerCase().includes(q)
     );
 
     const compareValues = (a, b, key) => {
-      if (["pct", "tardes", "just"].includes(key)) return (Number(a[key]) || 0) - (Number(b[key]) || 0);
-      return String(a[key] ?? "").localeCompare(String(b[key] ?? ""), "es", { sensitivity: "base" });
+      if (["pct", "tardes", "just"].includes(key)) {
+        return (Number(a[key]) || 0) - (Number(b[key]) || 0);
+      }
+      return String(a[key] ?? "").localeCompare(String(b[key] ?? ""), "es", {
+        sensitivity: "base",
+      });
     };
 
     const visibles = [...visiblesUnsorted].sort((a, b) => {
@@ -1074,7 +1262,8 @@ ${commsMsg}`);
     });
 
     const colComLabel = groupBy === "alumno" ? "Comisiones" : "Comisión";
-    const arrow = (key) => (alSort.key === key ? (alSort.dir === "asc" ? " ▲" : " ▼") : "");
+    const arrow = (key) =>
+      alSort.key === key ? (alSort.dir === "asc" ? " ▲" : " ▼") : "";
 
     return (
       <div className="content">
@@ -1082,15 +1271,29 @@ ${commsMsg}`);
           <h1 className="enroll-title m-0">Alumnos</h1>
 
           <div className="row-center gap-10">
-            <select className="grades-input" value={groupBy} onChange={(e) => setGroupBy(e.target.value)} title="Agrupar">
+            <select
+              className="grades-input"
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value)}
+              title="Agrupar"
+            >
               <option value="alumno">Agrupar: Alumno</option>
-              <option value="alumno-comision">Agrupar: Alumno + Comisión</option>
+              <option value="alumno-comision">
+                Agrupar: Alumno + Comisión
+              </option>
             </select>
 
-            <select className="grades-input" value={comiFilter} onChange={(e) => setComiFilter(e.target.value)} title="Filtrar comisión">
+            <select
+              className="grades-input"
+              value={comiFilter}
+              onChange={(e) => setComiFilter(e.target.value)}
+              title="Filtrar comisión"
+            >
               <option value="todas">Todas las comisiones</option>
-              {comisionesOptions.map((id) => (
-                <option key={id} value={id}>{id}</option>
+              {comisionesDbOptions.map((cod) => (
+                <option key={cod} value={cod}>
+                  {cod}
+                </option>
               ))}
             </select>
 
@@ -1108,28 +1311,83 @@ ${commsMsg}`);
             <table className="grades-table w-full">
               <thead>
                 <tr>
-                  <th className="th-clickable" onClick={() => onSort("alumno")}
-                      aria-sort={alSort.key === "alumno" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <th
+                    className="th-clickable"
+                    onClick={() => onSort("alumno")}
+                    aria-sort={
+                      alSort.key === "alumno"
+                        ? alSort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     Alumno{arrow("alumno")}
                   </th>
-                  <th className="th-clickable" onClick={() => onSort("comision")}
-                      aria-sort={alSort.key === "comision" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                    {colComLabel}{arrow("comision")}
+                  <th
+                    className="th-clickable"
+                    onClick={() => onSort("comision")}
+                    aria-sort={
+                      alSort.key === "comision"
+                        ? alSort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
+                    {colComLabel}
+                    {arrow("comision")}
                   </th>
-                  <th className="th-clickable" onClick={() => onSort("pct")}
-                      aria-sort={alSort.key === "pct" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <th
+                    className="th-clickable"
+                    onClick={() => onSort("pct")}
+                    aria-sort={
+                      alSort.key === "pct"
+                        ? alSort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     % Asistencia{arrow("pct")}
                   </th>
-                  <th className="th-clickable" onClick={() => onSort("tardes")}
-                      aria-sort={alSort.key === "tardes" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <th
+                    className="th-clickable"
+                    onClick={() => onSort("tardes")}
+                    aria-sort={
+                      alSort.key === "tardes"
+                        ? alSort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     Tardes{arrow("tardes")}
                   </th>
-                  <th className="th-clickable" onClick={() => onSort("just")}
-                      aria-sort={alSort.key === "just" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <th
+                    className="th-clickable"
+                    onClick={() => onSort("just")}
+                    aria-sort={
+                      alSort.key === "just"
+                        ? alSort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     Justificaciones{arrow("just")}
                   </th>
-                  <th className="th-clickable" onClick={() => onSort("email")}
-                      aria-sort={alSort.key === "email" ? (alSort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <th
+                    className="th-clickable"
+                    onClick={() => onSort("email")}
+                    aria-sort={
+                      alSort.key === "email"
+                        ? alSort.dir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
                     Correo{arrow("email")}
                   </th>
                 </tr>
@@ -1146,21 +1404,27 @@ ${commsMsg}`);
                   </tr>
                 ))}
                 {visibles.length === 0 && (
-                  <tr><td colSpan={6} className="muted text-center">Sin resultados</td></tr>
+                  <tr>
+                    <td colSpan={6} className="muted text-center">
+                      Sin resultados
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
 
           <div className="card__footer--right">
-            <button className="btn" onClick={() => setActive(null)}>Volver</button>
+            <button className="btn" onClick={() => setActive(null)}>
+              Volver
+            </button>
           </div>
         </div>
       </div>
     );
   };
 
-  // ===== Render: Comunicaciones =====
+  // ===== Render: Comunicaciones (JSON) =====
   const renderComunicaciones = () => (
     <div className="content">
       <div className="enroll-header mb-6">
@@ -1170,13 +1434,19 @@ ${commsMsg}`);
       <div className="enroll-card card--pad-md">
         <div className="comms-legend">
           <strong>Elegir Destinatario/s</strong>
-          <span className="comms-help">(podés filtrar por comisión y agregar correos manualmente)</span>
+          <span className="comms-help">
+            (podés filtrar por comisión y agregar correos manualmente)
+          </span>
         </div>
 
         <div className="form-row">
           <label className="form-label">Comisión:</label>
           <div className="comms-combo">
-            <select className="grades-input" value={commsComSel} onChange={(e) => addComision(e.target.value)}>
+            <select
+              className="grades-input"
+              value={commsComSel}
+              onChange={(e) => addComision(e.target.value)}
+            >
               <option value="">— seleccionar —</option>
               {comisionesFiltradas.map((id) => (
                 <option key={id} value={id}>
@@ -1186,7 +1456,12 @@ ${commsMsg}`);
             </select>
             <div className="chips">
               {commsComs.map((id) => (
-                <span key={id} className="chip" title="Quitar" onClick={() => removeComision(id)}>
+                <span
+                  key={id}
+                  className="chip"
+                  title="Quitar"
+                  onClick={() => removeComision(id)}
+                >
                   {id} <b>×</b>
                 </span>
               ))}
@@ -1217,7 +1492,9 @@ ${commsMsg}`);
         <div className="comms-msg">
           <div className="comms-msg__head">
             <div className="comms-msg__title">Escribe tu mensaje aquí:</div>
-            <button className="btn btn-primary" onClick={enviarComunicado}>Enviar</button>
+            <button className="btn btn-primary" onClick={enviarComunicado}>
+              Enviar
+            </button>
           </div>
           <textarea
             className="comms-textarea"
@@ -1227,7 +1504,8 @@ ${commsMsg}`);
             placeholder="Mensaje para los destinatarios..."
           />
           <div className="comms-meta">
-            {recipients.length} destinatario{recipients.length === 1 ? "" : "s"} · {commsMsg.length}/{COMMS_MAX}
+            {recipients.length} destinatario
+            {recipients.length === 1 ? "" : "s"} · {commsMsg.length}/{COMMS_MAX}
           </div>
         </div>
 
@@ -1240,28 +1518,52 @@ ${commsMsg}`);
     </div>
   );
 
-  // ===== Render: Notificaciones =====
+  // ===== Render: Notificaciones (JSON/LS) =====
   const renderNotificaciones = () => (
     <div className="notes-wrap">
       <div className="notes-card">
         <div className="notes-header">
           <h1 className="notes-title">Notificaciones</h1>
           <div className="notes-toolbar">
-            <div className="pill-group" role="tablist" aria-label="Filtro">
-              <button className={"pill" + (notiFilter === "todas" ? " is-active" : "")} onClick={() => setNotiFilter("todas")}>
+            <div
+              className="pill-group"
+              role="tablist"
+              aria-label="Filtro"
+            >
+              <button
+                className={
+                  "pill" + (notiFilter === "todas" ? " is-active" : "")
+                }
+                onClick={() => setNotiFilter("todas")}
+              >
                 Todos
               </button>
-              <button className={"pill" + (notiFilter === "favoritas" ? " is-active" : "")} onClick={() => setNotiFilter("favoritas")}>
+              <button
+                className={
+                  "pill" + (notiFilter === "favoritas" ? " is-active" : "")
+                }
+                onClick={() => setNotiFilter("favoritas")}
+              >
                 ★ Favoritos
               </button>
-              <button className={"pill" + (notiFilter === "no-leidas" ? " is-active" : "")} onClick={() => setNotiFilter("no-leidas")}>
+              <button
+                className={
+                  "pill" + (notiFilter === "no-leidas" ? " is-active" : "")
+                }
+                onClick={() => setNotiFilter("no-leidas")}
+              >
                 No leídas
               </button>
             </div>
             <div className="badge badge--alert" title="Sin leer">
               <span className="badge-dot" /> {unreadCount} sin leer
             </div>
-            <button className="note-btn" onClick={() => setActive(null)}>Volver</button>
+            <button
+              className="note-btn"
+              onClick={() => setActive(null)}
+            >
+              Volver
+            </button>
           </div>
         </div>
 
@@ -1277,42 +1579,63 @@ ${commsMsg}`);
 
         <div>
           {notisVisibles.map((n) => (
-            <div key={n.id} className={"note-item" + (n.leida ? "" : " unread")}>
+            <div
+              key={n.id}
+              className={"note-item" + (n.leida ? "" : " unread")}
+            >
               <div className="note-head">
                 <button
                   className="note-fav-btn"
-                  title={n.fav ? "Quitar de favoritos" : "Marcar como favorito"}
+                  title={
+                    n.fav ? "Quitar de favoritos" : "Marcar como favorito"
+                  }
                   onClick={() => toggleFav(n.id)}
                 >
                   {n.fav ? "★" : "☆"}
                 </button>
                 <h3 className="note-title">{n.titulo}</h3>
-                <div className="note-date">{fmtFechaHora(n.fecha)}</div>
+                <div className="note-date">
+                  {fmtFechaHora(n.fecha)}
+                </div>
                 <div className="note-actions">
                   {n.link && (
-                    <button className="note-btn" onClick={() => window.open(n.link, "_blank")}>
+                    <button
+                      className="note-btn"
+                      onClick={() => window.open(n.link, "_blank")}
+                    >
                       Ver
                     </button>
                   )}
                   <button
                     className="note-btn"
-                    title={n.leida ? "Marcar como no leída" : "Marcar como leída"}
+                    title={
+                      n.leida
+                        ? "Marcar como no leída"
+                        : "Marcar como leída"
+                    }
                     onClick={() => toggleLeida(n.id)}
                   >
                     {n.leida ? "Marcar no leída" : "Marcar leída"}
                   </button>
-                  <button className="note-btn danger" onClick={() => eliminarNoti(n.id)}>
+                  <button
+                    className="note-btn danger"
+                    onClick={() => eliminarNoti(n.id)}
+                  >
                     Eliminar
                   </button>
                 </div>
               </div>
-              {n.texto && <div className="note-detail">{n.texto}</div>}
+              {n.texto && (
+                <div className="note-detail">{n.texto}</div>
+              )}
             </div>
           ))}
 
           {notisVisibles.length === 0 && (
             <div className="note-item">
-              <div className="note-detail">No hay notificaciones para mostrar.</div>
+              <div className="note-detail">
+                No hay notificaciones para mostrar.
+              </div>
             </div>
           )}
         </div>
@@ -1329,9 +1652,24 @@ ${commsMsg}`);
       <div className="enroll-card card--pad-lg profile-card">
         <div className="profile-grid">
           <div className="profile-col profile-col--avatar">
-            <img src={avatar} alt={displayName} className="profile-avatar-lg" />
-            <input ref={fileRef} type="file" accept="image/*" onChange={onPhotoChange} hidden />
-            <button className="btn btn--success" onClick={choosePhoto}>Cambiar foto de perfil</button>
+            <img
+              src={avatar}
+              alt={displayName}
+              className="profile-avatar-lg"
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              onChange={onPhotoChange}
+              hidden
+            />
+            <button
+              className="btn btn--success"
+              onClick={choosePhoto}
+            >
+              Cambiar foto de perfil
+            </button>
           </div>
 
           <div className="profile-col profile-col--info">
@@ -1339,15 +1677,47 @@ ${commsMsg}`);
             <div className="profile-email">{email}</div>
             {!showPwd ? (
               <div className="mt-16">
-                <button className="btn btn--danger" onClick={() => setShowPwd(true)}>Cambiar contraseña</button>
+                <button
+                  className="btn btn--danger"
+                  onClick={() => setShowPwd(true)}
+                >
+                  Cambiar contraseña
+                </button>
               </div>
             ) : (
               <form className="pwd-form" onSubmit={savePassword}>
-                <input type="password" className="grades-input" placeholder="Nueva contraseña" value={pwd1} onChange={(e) => setPwd1(e.target.value)} />
-                <input type="password" className="grades-input" placeholder="Repetir contraseña" value={pwd2} onChange={(e) => setPwd2(e.target.value)} />
+                <input
+                  type="password"
+                  className="grades-input"
+                  placeholder="Nueva contraseña"
+                  value={pwd1}
+                  onChange={(e) => setPwd1(e.target.value)}
+                />
+                <input
+                  type="password"
+                  className="grades-input"
+                  placeholder="Repetir contraseña"
+                  value={pwd2}
+                  onChange={(e) => setPwd2(e.target.value)}
+                />
                 <div className="row gap-12">
-                  <button className="btn btn--success" type="submit">Guardar</button>
-                  <button className="btn" type="button" onClick={() => { setShowPwd(false); setPwd1(""); setPwd2(""); }}>Cancelar</button>
+                  <button
+                    className="btn btn--success"
+                    type="submit"
+                  >
+                    Guardar
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => {
+                      setShowPwd(false);
+                      setPwd1("");
+                      setPwd2("");
+                    }}
+                  >
+                    Cancelar
+                  </button>
                 </div>
               </form>
             )}
@@ -1355,12 +1725,18 @@ ${commsMsg}`);
 
           <div className="profile-col profile-col--roles">
             <h3 className="profile-subtitle">Roles:</h3>
-            <ul className="profile-roles">{roles.map((r) => <li key={r}>{r}</li>)}</ul>
+            <ul className="profile-roles">
+              {roles.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
           </div>
         </div>
 
         <div className="card__footer--right">
-          <button className="btn" onClick={() => setActive(null)}>Volver</button>
+          <button className="btn" onClick={() => setActive(null)}>
+            Volver
+          </button>
         </div>
       </div>
     </div>
@@ -1370,23 +1746,35 @@ ${commsMsg}`);
   const renderPanel = () => {
     switch (active) {
       case null:
-      case "inicio": return renderInicio();
-      case "mis-comisiones": return renderMisComisiones();
-      case "asistencia": return renderAsistencia();
-      case "justificaciones": return renderJustificaciones();
-      case "calendario": return renderCalendario();
-      case "alumnos": return renderAlumnos();
-      case "comunicaciones": return renderComunicaciones();
-      case "notificaciones": return renderNotificaciones();
-      case "perfil": return renderPerfil();
-      default: return renderInicio();
+      case "inicio":
+        return renderInicio();
+      case "mis-comisiones":
+        return renderMisComisiones();
+      case "asistencia":
+        return renderAsistencia();
+      case "justificaciones":
+        return renderJustificaciones();
+      case "calendario":
+        return renderCalendario();
+      case "alumnos":
+        return renderAlumnos();
+      case "comunicaciones":
+        return renderComunicaciones();
+      case "notificaciones":
+        return renderNotificaciones();
+      case "perfil":
+        return renderPerfil();
+      default:
+        return renderInicio();
     }
   };
 
   // ===== UI =====
   return (
     <div className="preceptor-page">
-      <div className="full-bg"><img src="/prisma.png" className="bg-img" alt="Fondo" /></div>
+      <div className="full-bg">
+        <img src="/prisma.png" className="bg-img" alt="Fondo" />
+      </div>
 
       <aside className="sidebar">
         <div className="sidebar__inner">
@@ -1399,7 +1787,9 @@ ${commsMsg}`);
           <div className="sb-menu">
             {items.map((it) => {
               const isInicio = it.id === "inicio";
-              const isActive = isInicio ? active === null || active === "inicio" : active === it.id;
+              const isActive = isInicio
+                ? active === null || active === "inicio"
+                : active === it.id;
               return (
                 <button
                   key={it.id}
@@ -1410,21 +1800,37 @@ ${commsMsg}`);
                 >
                   <span className="sb-item__icon" />
                   <span className="sb-item__text">{it.label}</span>
-                  {it.id === "notificaciones" && unreadCount > 0 && <span className="sb-badge">{unreadCount}</span>}
-                  {it.id === "justificaciones" && pendingJustCount > 0 && <span className="sb-badge">{pendingJustCount}</span>}
+                  {it.id === "notificaciones" && unreadCount > 0 && (
+                    <span className="sb-badge">{unreadCount}</span>
+                  )}
+                  {it.id === "justificaciones" &&
+                    pendingJustCount > 0 && (
+                      <span className="sb-badge">{pendingJustCount}</span>
+                    )}
                 </button>
               );
             })}
           </div>
 
           <div className="sb-footer">
-            <button className="btn btn-secondary" onClick={handleLogout}>Salir ✕</button>
+            <button
+              className="btn btn-secondary"
+              onClick={handleLogout}
+            >
+              Salir ✕
+            </button>
           </div>
         </div>
       </aside>
 
       <div className="brand brand--click" onClick={() => setActive(null)}>
-        <div className="brand__circle"><img src="/Logo.png" alt="Logo Prisma" className="brand__logo" /></div>
+        <div className="brand__circle">
+          <img
+            src="/Logo.png"
+            alt="Logo Prisma"
+            className="brand__logo"
+          />
+        </div>
         <h1 className="brand__title">Instituto Superior Prisma</h1>
       </div>
 

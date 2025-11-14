@@ -143,6 +143,8 @@ model inscripciones {
 
   @@unique([alumno_id, comision_id], map: "uq_insc")
   @@index([comision_id], map: "fk_insc_com")
+  @@index([alumno_id, estado], map: "idx_insc_alum_estado")
+  @@index([comision_id, estado], map: "idx_insc_com_estado")
 }
 
 model instituto {
