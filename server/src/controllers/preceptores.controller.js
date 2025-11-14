@@ -180,7 +180,9 @@ export async function getPreceptorAsistenciasLista(req, res, next) {
       return res.status(400).json({ error: "comisionId inválido" });
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-      return res.status(400).json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
+      return res
+        .status(400)
+        .json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
     }
 
     const vinculo = await prisma.preceptor_comision.findFirst({
@@ -240,7 +242,9 @@ export async function savePreceptorAsistencias(req, res, next) {
       return res.status(400).json({ error: "comisionId inválido" });
     }
     if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
-      return res.status(400).json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
+      return res
+        .status(400)
+        .json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
     }
 
     const vinculo = await prisma.preceptor_comision.findFirst({
@@ -276,6 +280,135 @@ export async function savePreceptorAsistencias(req, res, next) {
           VALUES (${fecha}, ${it.alumnoId}, ${comIdNum}, ${it.estado});
         `;
       }
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/preceptores/me/notificaciones
+export async function getPreceptorNotificaciones(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const userId = me.usuario_id;
+
+    const rows = await prisma.notificaciones.findMany({
+      where: {
+        usuario_id: userId, // solo personales
+      },
+      orderBy: [{ fecha: "desc" }, { id: "desc" }],
+    });
+
+    const out = (rows || []).map((n) => ({
+      id: n.id,
+      destino: n.destino,
+      usuarioId: n.usuario_id,
+      fecha:
+        n.fecha instanceof Date ? n.fecha.toISOString().slice(0, 10) : n.fecha,
+      titulo: n.titulo,
+      detalle: n.detalle || "",
+      tipo: n.tipo || "info",
+      leida: !!n.leida,
+      favorito: !!n.favorito,
+      link: n.link || null,
+    }));
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PATCH /api/preceptores/me/notificaciones/:id
+// body: { leida?: boolean, favorito?: boolean }
+export async function updatePreceptorNotificacion(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const userId = me.usuario_id;
+    const id = Number(req.params.id);
+
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ error: "ID inválido" });
+    }
+
+    const notif = await prisma.notificaciones.findFirst({
+      where: { id, usuario_id: userId },
+    });
+
+    if (!notif) {
+      return res.status(404).json({ error: "Notificación no encontrada" });
+    }
+
+    const data = {};
+    if (typeof req.body.leida === "boolean") {
+      data.leida = req.body.leida;
+    }
+    if (typeof req.body.favorito === "boolean") {
+      data.favorito = req.body.favorito;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: "Nada para actualizar" });
+    }
+
+    const updated = await prisma.notificaciones.update({
+      where: { id },
+      data,
+    });
+
+    const out = {
+      id: updated.id,
+      destino: updated.destino,
+      usuarioId: updated.usuario_id,
+      fecha:
+        updated.fecha instanceof Date
+          ? updated.fecha.toISOString().slice(0, 10)
+          : updated.fecha,
+      titulo: updated.titulo,
+      detalle: updated.detalle || "",
+      tipo: updated.tipo || "info",
+      leida: !!updated.leida,
+      favorito: !!updated.favorito,
+      link: updated.link || null,
+    };
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deletePreceptorNotificacion(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const userId = me.usuario_id;
+    const id = Number(req.params.id);
+
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ error: "ID inválido" });
+    }
+
+    const notif = await prisma.notificaciones.findFirst({
+      where: {
+        id,
+        usuario_id: userId,
+      },
+    });
+
+    if (!notif) {
+      return res.status(404).json({ error: "Notificación no encontrada" });
+    }
+
+    await prisma.notificaciones.delete({
+      where: { id },
     });
 
     res.status(204).end();

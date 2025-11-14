@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import "../styles/preceptor.css";
 
 // ===== Data (JSON locales) =====
-import notisJson from "../data/notificaciones.json";
 import alumnosRaw from "../data/alumnos.json";
 import materiasRaw from "../data/materias.json";
 import califsRaw from "../data/calificaciones.json";
@@ -18,19 +17,41 @@ import {
   fetchPreceptorAsistenciaFechas,
   fetchPreceptorAsistenciaLista,
   savePreceptorAsistencia,
+  fetchPreceptorNotificaciones,
+  updatePreceptorNotificacion,
+  deletePreceptorNotificacion,
 } from "../lib/preceptor.api";
 
 // ===== Constantes / Utils =====
 const CLASES_DE_HOY = [
-  { id: 1, materia: "Prácticas Profesionalizantes", comision: "P4-2025", horario: "18:00–20:00", aula: "Lab 3" },
-  { id: 2, materia: "Análisis de Sistemas", comision: "AS-2", horario: "20:10–22:00", aula: "Aula 12" },
+  {
+    id: 1,
+    materia: "Prácticas Profesionalizantes",
+    comision: "P4-2025",
+    horario: "18:00–20:00",
+    aula: "Lab 3",
+  },
+  {
+    id: 2,
+    materia: "Análisis de Sistemas",
+    comision: "AS-2",
+    horario: "20:10–22:00",
+    aula: "Aula 12",
+  },
 ];
 
 const fmtFecha = (iso) =>
-  new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  new Date(iso).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 
 const fmtFechaHora = (iso) =>
-  new Date(iso).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
+  new Date(iso).toLocaleString("es-AR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 
 const ymd = (d) => d.toISOString().slice(0, 10);
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -44,10 +65,18 @@ export default function Preceptor() {
   // ===== Sesión / Perfil =====
   const displayName = localStorage.getItem("displayName") || "Preceptor/a";
   const email = localStorage.getItem("email") || "preceptor@example.com";
-  const roles = useMemo(() => JSON.parse(localStorage.getItem("roles") || '["Preceptor/a"]'), []);
+  const roles = useMemo(
+    () => JSON.parse(localStorage.getItem("roles") || '["Preceptor/a"]'),
+    []
+  );
 
-  const [avatar, setAvatar] = useState(localStorage.getItem("preceptorAvatar") || "/preceptor.jpg");
-  useEffect(() => localStorage.setItem("preceptorAvatar", avatar), [avatar]);
+  const [avatar, setAvatar] = useState(
+    localStorage.getItem("preceptorAvatar") || "/preceptor.jpg"
+  );
+  useEffect(
+    () => localStorage.setItem("preceptorAvatar", avatar),
+    [avatar]
+  );
 
   const [active, setActive] = useState(null); // null = Inicio
 
@@ -68,7 +97,8 @@ export default function Preceptor() {
   const [pwd2, setPwd2] = useState("");
   const savePassword = (e) => {
     e.preventDefault();
-    if (pwd1.length < 6) return alert("La contraseña debe tener al menos 6 caracteres.");
+    if (pwd1.length < 6)
+      return alert("La contraseña debe tener al menos 6 caracteres.");
     if (pwd1 !== pwd2) return alert("Las contraseñas no coinciden.");
     alert("Contraseña actualizada (mock).");
     setShowPwd(false);
@@ -77,9 +107,15 @@ export default function Preceptor() {
   };
 
   // ===== Índices / Comisiones (JSON, usados en otros paneles todavía) =====
-  const alumnosById = useMemo(() => Object.fromEntries(alumnosRaw.map((a) => [a.id, a])), []);
+  const alumnosById = useMemo(
+    () => Object.fromEntries(alumnosRaw.map((a) => [a.id, a])),
+    []
+  );
   const docentesById = useMemo(
-    () => Object.fromEntries(docentesRaw.map((d) => [d.id, `${d.nombre} ${d.apellido}`])),
+    () =>
+      Object.fromEntries(
+        docentesRaw.map((d) => [d.id, `${d.nombre} ${d.apellido}`])
+      ),
     []
   );
 
@@ -98,7 +134,10 @@ export default function Preceptor() {
       })),
     []
   );
-  const comisionesOptions = useMemo(() => comisionesLocal.map((c) => c.id), [comisionesLocal]);
+  const comisionesOptions = useMemo(
+    () => comisionesLocal.map((c) => c.id),
+    [comisionesLocal]
+  );
 
   // ===== Comisiones desde la API (SQL) =====
   const [comisionesDb, setComisionesDb] = useState([]);
@@ -119,7 +158,9 @@ export default function Preceptor() {
     alumnosMetrics.forEach((r) => {
       if (r.comisionCodigo) s.add(r.comisionCodigo);
     });
-    return Array.from(s).sort((a, b) => String(a).localeCompare(String(b)));
+    return Array.from(s).sort((a, b) =>
+      String(a).localeCompare(String(b))
+    );
   }, [comisionesDb, alumnosMetrics]);
 
   // Carga de comisiones SQL
@@ -156,7 +197,7 @@ export default function Preceptor() {
     })();
   }, []);
 
-    // ===== Asistencias (API SQL) =====
+  // ===== Asistencias (API SQL) =====
   const todayISO = useMemo(() => ymd(new Date()), []);
 
   const [comisionSel, setComisionSel] = useState("");
@@ -170,15 +211,15 @@ export default function Preceptor() {
   const [errAsistencia, setErrAsistencia] = useState(null);
 
   const comisionesAsistOptions = useMemo(
-  () =>
-    (comisionesDb || []).map((c) => ({
-      value: c.id,
-      label: `${c.comision ?? "-"} — ${c.materia?.nombre ?? "-"}${
-        c.horario ? " — " + c.horario : ""
-      }`,
-    })),
-  [comisionesDb]
-);
+    () =>
+      (comisionesDb || []).map((c) => ({
+        value: c.id,
+        label: `${c.comision ?? "-"} — ${c.materia?.nombre ?? "-"}${
+          c.horario ? " — " + c.horario : ""
+        }`,
+      })),
+    [comisionesDb]
+  );
 
   useEffect(() => {
     if (!comisionSel && comisionesAsistOptions.length > 0) {
@@ -187,36 +228,42 @@ export default function Preceptor() {
   }, [comisionSel, comisionesAsistOptions]);
 
   useEffect(() => {
-  const loadFechas = async () => {
-    if (!comisionSel) return;
-    try {
-      const data = await fetchPreceptorAsistenciaFechas(comisionSel);
-      let opts = Array.isArray(data)
-        ? data.map((f) => ({ value: f, label: fmtFecha(f) }))
-        : [];
+    const loadFechas = async () => {
+      if (!comisionSel) return;
+      try {
+        const data = await fetchPreceptorAsistenciaFechas(comisionSel);
+        let opts = Array.isArray(data)
+          ? data.map((f) => ({ value: f, label: fmtFecha(f) }))
+          : [];
 
-      if (!opts.find((o) => o.value === todayISO)) {
-        opts.unshift({
-          value: todayISO,
-          label: `${fmtFecha(todayISO)} (hoy)`,
-        });
-      }
-      if (opts.length === 0) {
-        opts = [
-          { value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` },
-        ];
-      }
+        if (!opts.find((o) => o.value === todayISO)) {
+          opts.unshift({
+            value: todayISO,
+            label: `${fmtFecha(todayISO)} (hoy)`,
+          });
+        }
+        if (opts.length === 0) {
+          opts = [
+            {
+              value: todayISO,
+              label: `${fmtFecha(todayISO)} (hoy)`,
+            },
+          ];
+        }
 
-      setFechaOptions(opts);
-    } catch (err) {
-      console.error("fetchPreceptorAsistenciaFechas error", err);
-      setFechaOptions([
-        { value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` },
-      ]);
-    }
-  };
-  loadFechas();
-}, [comisionSel, todayISO]);
+        setFechaOptions(opts);
+      } catch (err) {
+        console.error("fetchPreceptorAsistenciaFechas error", err);
+        setFechaOptions([
+          {
+            value: todayISO,
+            label: `${fmtFecha(todayISO)} (hoy)`,
+          },
+        ]);
+      }
+    };
+    loadFechas();
+  }, [comisionSel, todayISO]);
 
   useEffect(() => {
     const loadLista = async () => {
@@ -305,7 +352,8 @@ export default function Preceptor() {
   const [jfQuery, setJfQuery] = useState("");
   const [jfDraft, setJfDraft] = useState({});
 
-  const updateJustifEstado = (id, estado) => setJfDraft((prev) => ({ ...prev, [id]: estado }));
+  const updateJustifEstado = (id, estado) =>
+    setJfDraft((prev) => ({ ...prev, [id]: estado }));
 
   const guardarJustificaciones = () => {
     const merged = (justifDb || []).map((j) =>
@@ -317,7 +365,8 @@ export default function Preceptor() {
     alert("Cambios guardados.");
   };
 
-  const verDocumento = (url) => (url ? window.open(url, "_blank") : alert("No hay documento adjunto."));
+  const verDocumento = (url) =>
+    url ? window.open(url, "_blank") : alert("No hay documento adjunto.");
 
   const pendingJustCount = useMemo(() => {
     const overlay = (justifDb || []).map((j) =>
@@ -332,10 +381,28 @@ export default function Preceptor() {
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calAnimKey, setCalAnimKey] = useState(0);
   const MESES_ES = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
   ];
-  const DOW_ES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const DOW_ES = [
+    "Domingo",
+    "Lunes",
+    "Martes",
+    "Miércoles",
+    "Jueves",
+    "Viernes",
+    "Sábado",
+  ];
 
   const [eventosUser, setEventosUser] = useState(() => {
     try {
@@ -344,12 +411,21 @@ export default function Preceptor() {
       return [];
     }
   });
-  useEffect(() => localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(eventosUser)), [eventosUser]);
+  useEffect(
+    () => localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(eventosUser)),
+    [eventosUser]
+  );
 
-  const allEventos = useMemo(() => ([...(eventosRaw || []), ...eventosUser]), [eventosUser]);
+  const allEventos = useMemo(
+    () => [...(eventosRaw || []), ...eventosUser],
+    [eventosUser]
+  );
 
   const eventosMes = useMemo(
-    () => (allEventos || []).filter((e) => e.fecha.startsWith(`${calYear}-${pad2(calMonth + 1)}`)),
+    () =>
+      (allEventos || []).filter((e) =>
+        e.fecha.startsWith(`${calYear}-${pad2(calMonth + 1)}`)
+      ),
     [allEventos, calYear, calMonth]
   );
 
@@ -374,8 +450,14 @@ export default function Preceptor() {
   );
 
   const years = useMemo(() => {
-    const base = new Set([today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1]);
-    (allEventos || []).forEach((e) => base.add(Number(e.fecha.slice(0, 4))));
+    const base = new Set([
+      today.getFullYear() - 1,
+      today.getFullYear(),
+      today.getFullYear() + 1,
+    ]);
+    (allEventos || []).forEach((e) =>
+      base.add(Number(e.fecha.slice(0, 4)))
+    );
     return Array.from(base).sort((a, b) => a - b);
   }, [today, allEventos]);
 
@@ -394,7 +476,13 @@ export default function Preceptor() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("add");
   const emptyDraft = useMemo(
-    () => ({ id: null, fecha: todayISO, comision: comisionesOptions[0] || "", titulo: "", user: true }),
+    () => ({
+      id: null,
+      fecha: todayISO,
+      comision: comisionesOptions[0] || "",
+      titulo: "",
+      user: true,
+    }),
     [todayISO, comisionesOptions]
   );
   const [draft, setDraft] = useState(emptyDraft);
@@ -404,17 +492,35 @@ export default function Preceptor() {
 
   const openAddModal = (isoDate) => {
     setModalMode("add");
-    setDraft({ id: null, fecha: isoDate || todayISO, comision: comisionesOptions[0] || "", titulo: "", user: true });
+    setDraft({
+      id: null,
+      fecha: isoDate || todayISO,
+      comision: comisionesOptions[0] || "",
+      titulo: "",
+      user: true,
+    });
     setIsModalOpen(true);
   };
 
   const openEditModal = (ev) => {
     if (ev.user) {
       setModalMode("edit");
-      setDraft({ id: ev.id, fecha: ev.fecha, comision: ev.comision, titulo: ev.titulo, user: true });
+      setDraft({
+        id: ev.id,
+        fecha: ev.fecha,
+        comision: ev.comision,
+        titulo: ev.titulo,
+        user: true,
+      });
     } else {
       setModalMode("view");
-      setDraft({ id: ev.id ?? null, fecha: ev.fecha, comision: ev.comision, titulo: ev.titulo, user: false });
+      setDraft({
+        id: ev.id ?? null,
+        fecha: ev.fecha,
+        comision: ev.comision,
+        titulo: ev.titulo,
+        user: false,
+      });
     }
     setIsModalOpen(true);
   };
@@ -423,7 +529,8 @@ export default function Preceptor() {
     if (!draft.titulo.trim()) return alert("Ingresá un título.");
     if (!draft.fecha) return alert("Elegí una fecha.");
     if (!draft.comision) return alert("Elegí una comisión.");
-    if (!comisionesOptions.includes(draft.comision)) return alert("La comisión seleccionada no es válida.");
+    if (!comisionesOptions.includes(draft.comision))
+      return alert("La comisión seleccionada no es válida.");
     if (modalMode === "add") {
       const nuevo = { ...draft, id: Date.now(), user: true };
       setEventosUser((prev) => [...prev, nuevo]);
@@ -431,7 +538,12 @@ export default function Preceptor() {
       setEventosUser((prev) =>
         prev.map((e) =>
           e.id === draft.id
-            ? { ...e, fecha: draft.fecha, comision: draft.comision, titulo: draft.titulo }
+            ? {
+                ...e,
+                fecha: draft.fecha,
+                comision: draft.comision,
+                titulo: draft.titulo,
+              }
             : e
         )
       );
@@ -463,12 +575,15 @@ export default function Preceptor() {
     setCommsComs((p) => (p.includes(id) ? p : [...p, id]));
     setCommsComSel("");
   };
-  const removeComision = (id) => setCommsComs((p) => p.filter((c) => c !== id));
+  const removeComision = (id) =>
+    setCommsComs((p) => p.filter((c) => c !== id));
 
   const recipients = useMemo(() => {
     const mailsFromComs = commsComs.flatMap((key) => {
       const ids = alumnosDeComision.get(key) || new Set();
-      return Array.from(ids).map((uid) => alumnosById[uid]?.email).filter(Boolean);
+      return Array.from(ids)
+        .map((uid) => alumnosById[uid]?.email)
+        .filter(Boolean);
     });
     const mailsOtros = commsOtros
       .split(/[,;\s]+/)
@@ -480,7 +595,8 @@ export default function Preceptor() {
   const enviarComunicado = () => {
     if (!commsSubject.trim()) return alert("Ingresá un asunto.");
     if (!commsMsg.trim()) return alert("Escribe un mensaje.");
-    if (recipients.length === 0) return alert("Elegí al menos un destinatario.");
+    if (recipients.length === 0)
+      return alert("Elegí al menos un destinatario.");
     alert(`Enviado (mock)
 Asunto: ${commsSubject}
 Destinatarios: ${recipients.length}
@@ -493,49 +609,102 @@ ${commsMsg}`);
     setCommsComs([]);
   };
 
-  // ===== Notificaciones =====
-  const preceptorId = Number(localStorage.getItem("userId"));
-  const toIso = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T09:00:00` : d);
+  // ===== Notificaciones (API SQL) =====
+  const toIso = (d) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T09:00:00` : d;
 
-  const notisFromJson = useMemo(() => {
-    const hasUserId = !Number.isNaN(preceptorId);
-    return (notisJson || [])
-      .filter(
-        (n) =>
-          n.destino === "todos" ||
-          (n.destino === "preceptor" &&
-            (!n.usuarioId || !hasUserId || n.usuarioId === preceptorId))
-      )
-      .map((n) => ({
-        id: `N-${n.id}`,
-        titulo: n.titulo,
-        texto: n.detalle,
-        fecha: toIso(n.fecha),
-        leida: !!n.leida,
-        fav: !!n.favorito,
-        link: n.link || null,
-        tipo: n.tipo || "info",
-      }))
-      .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
-  }, [preceptorId]);
-
-  const NOTI_STORAGE_KEY = "pp4_preceptor_notis";
-  const [notis, setNotis] = useState(() => {
-    const fromLS = localStorage.getItem(NOTI_STORAGE_KEY);
-    return fromLS ? JSON.parse(fromLS) : notisFromJson;
-  });
-  useEffect(() => localStorage.setItem(NOTI_STORAGE_KEY, JSON.stringify(notis)), [notis]);
-
-  const unreadCount = useMemo(() => notis.filter((n) => !n.leida).length, [notis]);
+  const [notis, setNotis] = useState([]);
   const [notiFilter, setNotiFilter] = useState("todas");
   const [notiQuery, setNotiQuery] = useState("");
 
-  const toggleLeida = (id) =>
-    setNotis((p) => p.map((n) => (n.id === id ? { ...n, leida: !n.leida } : n)));
-  const toggleFav = (id) =>
-    setNotis((p) => p.map((n) => (n.id === id ? { ...n, fav: !n.fav } : n)));
-  const eliminarNoti = (id) =>
+  useEffect(() => {
+    const loadNotis = async () => {
+      try {
+        const raw = await fetchPreceptorNotificaciones();
+        const mapped = (raw || []).map((n) => ({
+          id: n.id,
+          titulo: n.titulo,
+          texto: n.detalle || "",
+          fecha: toIso(n.fecha),
+          leida: !!n.leida,
+          fav: !!n.favorito,
+          link: n.link || null,
+          tipo: n.tipo || "info",
+        }));
+        setNotis(
+          mapped.sort((a, b) =>
+            (b.fecha || "").localeCompare(a.fecha || "")
+          )
+        );
+      } catch (e) {
+        console.error("fetchPreceptorNotificaciones error", e);
+        setNotis([]);
+      }
+    };
+    loadNotis();
+  }, []);
+
+  const unreadCount = useMemo(
+    () => notis.filter((n) => !n.leida).length,
+    [notis]
+  );
+
+  const toggleLeida = async (id) => {
+    let newLeida = false;
+    setNotis((prev) =>
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        newLeida = !n.leida;
+        return { ...n, leida: newLeida };
+      })
+    );
+    try {
+      await updatePreceptorNotificacion(id, { leida: newLeida });
+    } catch (err) {
+      console.error("toggleLeida error", err);
+    }
+  };
+
+  const toggleFav = async (id) => {
+    let newFav = false;
+    setNotis((prev) =>
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        newFav = !n.fav;
+        return { ...n, fav: newFav };
+      })
+    );
+    try {
+      await updatePreceptorNotificacion(id, { favorito: newFav });
+    } catch (err) {
+      console.error("toggleFav error", err);
+    }
+  };
+
+  const eliminarNoti = async (id) => {
+    const notif = notis.find((n) => n.id === id);
+    if (!notif) return;
+
+    const okConfirm = window.confirm(
+      "¿Seguro que querés eliminar esta notificación? Esta acción no se puede deshacer."
+    );
+    if (!okConfirm) return;
+
+    const prev = notis;
     setNotis((p) => p.filter((n) => n.id !== id));
+
+    try {
+      const ok = await deletePreceptorNotificacion(id);
+      if (!ok) {
+        alert("No se pudo eliminar la notificación en el servidor.");
+        setNotis(prev);
+      }
+    } catch (err) {
+      console.error("eliminarNoti error", err);
+      alert("Ocurrió un error al eliminar la notificación.");
+      setNotis(prev);
+    }
+  };
 
   const notisVisibles = useMemo(() => {
     const q = notiQuery.trim().toLowerCase();
@@ -547,11 +716,16 @@ ${commsMsg}`);
           ? !n.leida
           : n.fav
       )
-      .filter((n) =>
-        !q ||
-        (n.titulo + " " + (n.texto || "")).toLowerCase().includes(q)
+      .filter(
+        (n) =>
+          !q ||
+          (n.titulo + " " + (n.texto || ""))
+            .toLowerCase()
+            .includes(q)
       )
-      .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+      .sort((a, b) =>
+        (b.fecha || "").localeCompare(a.fecha || "")
+      );
   }, [notis, notiFilter, notiQuery]);
 
   // ===== Sidebar =====
@@ -623,7 +797,9 @@ ${commsMsg}`);
             <div className="grid-gap">
               <div className="enroll-card">
                 <div className="enroll-header">
-                  <h3 className="enroll-title">Justificaciones pendientes</h3>
+                  <h3 className="enroll-title">
+                    Justificaciones pendientes
+                  </h3>
                 </div>
                 <div className="row-center gap-12">
                   <div className="enroll-col__head minw-60 text-center">
@@ -645,7 +821,9 @@ ${commsMsg}`);
 
                 {proximosEventos.length === 0 ? (
                   <div className="muted">
-                    <p>No hay eventos en las próximas 3 semanas.</p>
+                    <p>
+                      No hay eventos en las próximas 3 semanas.
+                    </p>
                   </div>
                 ) : (
                   <div className="grades-table-wrap">
@@ -659,7 +837,9 @@ ${commsMsg}`);
                       </thead>
                       <tbody>
                         {proximosEventos.map((ev) => (
-                          <tr key={`${ev.id ?? ev.fecha}-${ev.titulo}`}>
+                          <tr
+                            key={`${ev.id ?? ev.fecha}-${ev.titulo}`}
+                          >
                             <td>{fmtFecha(ev.fecha)}</td>
                             <td>{ev.titulo}</td>
                             <td>{ev.comision}</td>
@@ -698,9 +878,13 @@ ${commsMsg}`);
           <h1 className="enroll-title">Mis Comisiones</h1>
         </div>
         <div className="enroll-card card--pad-md">
-          {loadingComs && <div className="muted">Cargando comisiones...</div>}
+          {loadingComs && (
+            <div className="muted">Cargando comisiones...</div>
+          )}
           {errComs && !loadingComs && (
-            <div className="muted">No se pudieron cargar las comisiones.</div>
+            <div className="muted">
+              No se pudieron cargar las comisiones.
+            </div>
           )}
 
           <div className="grades-table-wrap">
@@ -728,18 +912,26 @@ ${commsMsg}`);
                     <td>{row.estado}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && !loadingComs && !errComs && (
-                  <tr>
-                    <td colSpan={7} className="muted text-center">
-                      Sin comisiones asignadas
-                    </td>
-                  </tr>
-                )}
+                {rows.length === 0 &&
+                  !loadingComs &&
+                  !errComs && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="muted text-center"
+                      >
+                        Sin comisiones asignadas
+                      </td>
+                    </tr>
+                  )}
               </tbody>
             </table>
           </div>
           <div className="card__footer--right">
-            <button className="btn" onClick={() => setActive(null)}>
+            <button
+              className="btn"
+              onClick={() => setActive(null)}
+            >
               Volver
             </button>
           </div>
@@ -748,7 +940,7 @@ ${commsMsg}`);
     );
   };
 
-   // ===== Render: Asistencia (API SQL) =====
+  // ===== Render: Asistencia (API SQL) =====
   const renderAsistencia = () => {
     const hasComisiones = comisionesAsistOptions.length > 0;
 
@@ -766,7 +958,9 @@ ${commsMsg}`);
             onChange={(e) => setComisionSel(e.target.value)}
             disabled={!hasComisiones}
           >
-            {!hasComisiones && <option value="">Sin comisiones</option>}
+            {!hasComisiones && (
+              <option value="">Sin comisiones</option>
+            )}
             {comisionesAsistOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
@@ -775,18 +969,20 @@ ${commsMsg}`);
           </select>
 
           <span className="label ml-18">Fecha:</span>
-<input
-  type="date"
-  className="grades-input w-220"
-  value={fechaAsis}
-  onChange={(e) => setFechaAsis(e.target.value)}
-  disabled={!hasComisiones}
-/>
+          <input
+            type="date"
+            className="grades-input w-220"
+            value={fechaAsis}
+            onChange={(e) => setFechaAsis(e.target.value)}
+            disabled={!hasComisiones}
+          />
         </div>
 
         <div className="enroll-card card--pad-lg">
           {loadingAsistencia && (
-            <div className="muted mb-8">Cargando asistencia...</div>
+            <div className="muted mb-8">
+              Cargando asistencia...
+            </div>
           )}
           {errAsistencia && !loadingAsistencia && (
             <div className="muted mb-8">{errAsistencia}</div>
@@ -812,7 +1008,9 @@ ${commsMsg}`);
                       <select
                         className="grades-input"
                         value={a.estado}
-                        onChange={(e) => setEstado(a.id, e.target.value)}
+                        onChange={(e) =>
+                          setEstado(a.id, e.target.value)
+                        }
                       >
                         <option value=""></option>
                         <option value="P">P</option>
@@ -823,13 +1021,17 @@ ${commsMsg}`);
                     </td>
                   </tr>
                 ))}
-                {asistenciaList.length === 0 && !loadingAsistencia && (
-                  <tr>
-                    <td colSpan={4} className="muted text-center">
-                      No hay alumnos para mostrar.
-                    </td>
-                  </tr>
-                )}
+                {asistenciaList.length === 0 &&
+                  !loadingAsistencia && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="muted text-center"
+                      >
+                        No hay alumnos para mostrar.
+                      </td>
+                    </tr>
+                  )}
               </tbody>
             </table>
           </div>
@@ -859,7 +1061,10 @@ ${commsMsg}`);
           </div>
 
           <div className="card__footer--right">
-            <button className="btn" onClick={() => setActive(null)}>
+            <button
+              className="btn"
+              onClick={() => setActive(null)}
+            >
               Volver
             </button>
           </div>
@@ -941,7 +1146,9 @@ ${commsMsg}`);
               <tbody>
                 {rows.map((j) => {
                   const a = alumnosById[j.alumnoId] || {};
-                  const nombre = `${a.apellido || "-"}, ${a.nombre || "-"}`;
+                  const nombre = `${a.apellido || "-"}, ${
+                    a.nombre || "-"
+                  }`;
                   const comi = `${j.materiaId}_${j.comision}`;
                   return (
                     <tr key={j.id}>
@@ -958,19 +1165,28 @@ ${commsMsg}`);
                               : j.estado
                           }
                           onChange={(e) =>
-                            updateJustifEstado(j.id, e.target.value)
+                            updateJustifEstado(
+                              j.id,
+                              e.target.value
+                            )
                           }
                         >
-                          <option value="pendiente">Pendiente</option>
+                          <option value="pendiente">
+                            Pendiente
+                          </option>
                           <option value="aprobada">Aprobada</option>
-                          <option value="rechazada">Rechazada</option>
+                          <option value="rechazada">
+                            Rechazada
+                          </option>
                         </select>
                       </td>
                       <td>{j.motivo || "-"}</td>
                       <td>
                         <button
                           className="btn"
-                          onClick={() => verDocumento(j.documentoUrl)}
+                          onClick={() =>
+                            verDocumento(j.documentoUrl)
+                          }
                         >
                           Ver
                         </button>
@@ -990,7 +1206,10 @@ ${commsMsg}`);
               Guardar
             </button>
             <div className="spacer-12" />
-            <button className="btn" onClick={() => setActive(null)}>
+            <button
+              className="btn"
+              onClick={() => setActive(null)}
+            >
               Volver
             </button>
           </div>
@@ -1065,7 +1284,9 @@ ${commsMsg}`);
                     className="calendar__cell calendar__cell--empty"
                   />
                 );
-              const dateISO = `${calYear}-${pad2(calMonth + 1)}-${pad2(day)}`;
+              const dateISO = `${calYear}-${pad2(
+                calMonth + 1
+              )}-${pad2(day)}`;
               const dayEvents = eventosPorDia.get(day) || [];
               return (
                 <div
@@ -1080,7 +1301,11 @@ ${commsMsg}`);
                       <div
                         key={`${ev.id ?? "r"}-${i}`}
                         className="calendar__pill calendar__pill--clickable"
-                        style={{ background: colorFromCommission(ev.comision) }}
+                        style={{
+                          background: colorFromCommission(
+                            ev.comision
+                          ),
+                        }}
                         title={`${ev.titulo} — ${ev.comision}`}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1106,7 +1331,10 @@ ${commsMsg}`);
               className="modal-backdrop"
               onClick={() => setIsModalOpen(false)}
             >
-              <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="modal"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <h3 className="modal-title">
                   {modalMode === "add"
                     ? "Agregar evento"
@@ -1122,7 +1350,10 @@ ${commsMsg}`);
                     className="grades-input"
                     value={draft.fecha}
                     onChange={(e) =>
-                      setDraft({ ...draft, fecha: e.target.value })
+                      setDraft({
+                        ...draft,
+                        fecha: e.target.value,
+                      })
                     }
                     disabled={modalMode === "view"}
                   />
@@ -1134,7 +1365,10 @@ ${commsMsg}`);
                     className="grades-input"
                     value={draft.comision}
                     onChange={(e) =>
-                      setDraft({ ...draft, comision: e.target.value })
+                      setDraft({
+                        ...draft,
+                        comision: e.target.value,
+                      })
                     }
                     disabled={modalMode === "view"}
                   >
@@ -1153,7 +1387,10 @@ ${commsMsg}`);
                     placeholder="Título del evento"
                     value={draft.titulo}
                     onChange={(e) =>
-                      setDraft({ ...draft, titulo: e.target.value })
+                      setDraft({
+                        ...draft,
+                        titulo: e.target.value,
+                      })
                     }
                     disabled={modalMode === "view"}
                   />
@@ -1179,7 +1416,9 @@ ${commsMsg}`);
                       className="btn btn--success"
                       onClick={saveDraft}
                     >
-                      {modalMode === "add" ? "Agregar" : "Guardar"}
+                      {modalMode === "add"
+                        ? "Agregar"
+                        : "Guardar"}
                     </button>
                   )}
                 </div>
@@ -1194,7 +1433,10 @@ ${commsMsg}`);
           )}
 
           <div className="card__footer--right">
-            <button className="btn" onClick={() => setActive(null)}>
+            <button
+              className="btn"
+              onClick={() => setActive(null)}
+            >
               Volver
             </button>
           </div>
@@ -1207,11 +1449,15 @@ ${commsMsg}`);
   const [alumnosQuery, setAlumnosQuery] = useState("");
   const [groupBy, setGroupBy] = useState("alumno"); // 'alumno' o 'alumno-comision'
   const [comiFilter, setComiFilter] = useState("todas");
-  const [alSort, setAlSort] = useState({ key: "alumno", dir: "asc" });
+  const [alSort, setAlSort] = useState({
+    key: "alumno",
+    dir: "asc",
+  });
   const onSort = (key) =>
     setAlSort((s) => ({
       key,
-      dir: s.key === key && s.dir === "asc" ? "desc" : "asc",
+      dir:
+        s.key === key && s.dir === "asc" ? "desc" : "asc",
     }));
 
   const renderAlumnos = () => {
@@ -1222,7 +1468,9 @@ ${commsMsg}`);
             <h1 className="enroll-title">Alumnos</h1>
           </div>
           <div className="enroll-card card--pad-md">
-            <div className="muted">Cargando métricas de alumnos...</div>
+            <div className="muted">
+              Cargando métricas de alumnos...
+            </div>
           </div>
         </div>
       );
@@ -1244,33 +1492,38 @@ ${commsMsg}`);
     }
 
     const baseRowsByComision = alumnosMetrics.map((r) => {
-  const presentes = Number(r.presentes) || 0;
-  const totalClases = Number(r.totalClases) || 0;
-  const tardes = Number(r.tardes) || 0;
-  const justificaciones = Number(r.justificaciones) || 0;
+      const presentes = Number(r.presentes) || 0;
+      const totalClases = Number(r.totalClases) || 0;
+      const tardes = Number(r.tardes) || 0;
+      const justificaciones = Number(r.justificaciones) || 0;
 
-  const pct = totalClases > 0 ? Math.round((presentes / totalClases) * 100) : 0;
+      const pct =
+        totalClases > 0
+          ? Math.round((presentes / totalClases) * 100)
+          : 0;
 
-  return {
-    id: `${r.alumnoId}-${r.comisionId}`,
-    alumnoId: r.alumnoId,
-    alumno: r.alumno,
-    comision: r.comisionCodigo || "-",
-    pct,
-    tardes,
-    just: justificaciones,
-    email: r.email || "-",
-    presentes,
-    totalClases,
-  };
-});
+      return {
+        id: `${r.alumnoId}-${r.comisionId}`,
+        alumnoId: r.alumnoId,
+        alumno: r.alumno,
+        comision: r.comisionCodigo || "-",
+        pct,
+        tardes,
+        just: justificaciones,
+        email: r.email || "-",
+        presentes,
+        totalClases,
+      };
+    });
 
     const q = alumnosQuery.trim().toLowerCase();
 
     const filteredByComision =
       comiFilter === "todas"
         ? baseRowsByComision
-        : baseRowsByComision.filter((r) => r.comision === comiFilter);
+        : baseRowsByComision.filter(
+            (r) => r.comision === comiFilter
+          );
 
     const buildRowsByAlumno = () => {
       const acc = new Map();
@@ -1301,13 +1554,17 @@ ${commsMsg}`);
       for (const slot of acc.values()) {
         const pct =
           slot.totalClases > 0
-            ? Math.round((slot.presentes / slot.totalClases) * 100)
+            ? Math.round(
+                (slot.presentes / slot.totalClases) * 100
+              )
             : 0;
         rows.push({
           id: slot.id,
           alumnoId: slot.alumnoId,
           alumno: slot.alumno,
-          comision: Array.from(slot.comisiones).sort().join(", "),
+          comision: Array.from(slot.comisiones)
+            .sort()
+            .join(", "),
           pct,
           tardes: slot.tardes,
           just: slot.just,
@@ -1341,11 +1598,17 @@ ${commsMsg}`);
 
     const compareValues = (a, b, key) => {
       if (["pct", "tardes", "just"].includes(key)) {
-        return (Number(a[key]) || 0) - (Number(b[key]) || 0);
+        return (
+          (Number(a[key]) || 0) - (Number(b[key]) || 0)
+        );
       }
-      return String(a[key] ?? "").localeCompare(String(b[key] ?? ""), "es", {
-        sensitivity: "base",
-      });
+      return String(a[key] ?? "").localeCompare(
+        String(b[key] ?? ""),
+        "es",
+        {
+          sensitivity: "base",
+        }
+      );
     };
 
     const visibles = [...visiblesUnsorted].sort((a, b) => {
@@ -1353,9 +1616,14 @@ ${commsMsg}`);
       return alSort.dir === "asc" ? r : -r;
     });
 
-    const colComLabel = groupBy === "alumno" ? "Comisiones" : "Comisión";
+    const colComLabel =
+      groupBy === "alumno" ? "Comisiones" : "Comisión";
     const arrow = (key) =>
-      alSort.key === key ? (alSort.dir === "asc" ? " ▲" : " ▼") : "";
+      alSort.key === key
+        ? alSort.dir === "asc"
+          ? " ▲"
+          : " ▼"
+        : "";
 
     return (
       <div className="content">
@@ -1378,10 +1646,14 @@ ${commsMsg}`);
             <select
               className="grades-input"
               value={comiFilter}
-              onChange={(e) => setComiFilter(e.target.value)}
+              onChange={(e) =>
+                setComiFilter(e.target.value)
+              }
               title="Filtrar comisión"
             >
-              <option value="todas">Todas las comisiones</option>
+              <option value="todas">
+                Todas las comisiones
+              </option>
               {comisionesDbOptions.map((cod) => (
                 <option key={cod} value={cod}>
                   {cod}
@@ -1393,7 +1665,9 @@ ${commsMsg}`);
               className="grades-input w-260"
               placeholder="Buscar alumno, comisión o correo"
               value={alumnosQuery}
-              onChange={(e) => setAlumnosQuery(e.target.value)}
+              onChange={(e) =>
+                setAlumnosQuery(e.target.value)
+              }
             />
           </div>
         </div>
@@ -1497,7 +1771,10 @@ ${commsMsg}`);
                 ))}
                 {visibles.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted text-center">
+                    <td
+                      colSpan={6}
+                      className="muted text-center"
+                    >
                       Sin resultados
                     </td>
                   </tr>
@@ -1507,7 +1784,10 @@ ${commsMsg}`);
           </div>
 
           <div className="card__footer--right">
-            <button className="btn" onClick={() => setActive(null)}>
+            <button
+              className="btn"
+              onClick={() => setActive(null)}
+            >
               Volver
             </button>
           </div>
@@ -1527,7 +1807,8 @@ ${commsMsg}`);
         <div className="comms-legend">
           <strong>Elegir Destinatario/s</strong>
           <span className="comms-help">
-            (podés filtrar por comisión y agregar correos manualmente)
+            (podés filtrar por comisión y agregar correos
+            manualmente)
           </span>
         </div>
 
@@ -1567,7 +1848,9 @@ ${commsMsg}`);
             className="grades-input w-full"
             placeholder="Correos separados por coma, espacio o ;"
             value={commsOtros}
-            onChange={(e) => setCommsOtros(e.target.value)}
+            onChange={(e) =>
+              setCommsOtros(e.target.value)
+            }
           />
         </div>
 
@@ -1577,14 +1860,21 @@ ${commsMsg}`);
             className="grades-input w-full"
             placeholder="Asunto del comunicado"
             value={commsSubject}
-            onChange={(e) => setCommsSubject(e.target.value)}
+            onChange={(e) =>
+              setCommsSubject(e.target.value)
+            }
           />
         </div>
 
         <div className="comms-msg">
           <div className="comms-msg__head">
-            <div className="comms-msg__title">Escribe tu mensaje aquí:</div>
-            <button className="btn btn-primary" onClick={enviarComunicado}>
+            <div className="comms-msg__title">
+              Escribe tu mensaje aquí:
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={enviarComunicado}
+            >
               Enviar
             </button>
           </div>
@@ -1592,17 +1882,23 @@ ${commsMsg}`);
             className="comms-textarea"
             maxLength={COMMS_MAX}
             value={commsMsg}
-            onChange={(e) => setCommsMsg(e.target.value)}
+            onChange={(e) =>
+              setCommsMsg(e.target.value)
+            }
             placeholder="Mensaje para los destinatarios..."
           />
           <div className="comms-meta">
             {recipients.length} destinatario
-            {recipients.length === 1 ? "" : "s"} · {commsMsg.length}/{COMMS_MAX}
+            {recipients.length === 1 ? "" : "s"} ·{" "}
+            {commsMsg.length}/{COMMS_MAX}
           </div>
         </div>
 
         <div className="card__footer--right">
-          <button className="btn" onClick={() => setActive(null)}>
+          <button
+            className="btn"
+            onClick={() => setActive(null)}
+          >
             Volver
           </button>
         </div>
@@ -1610,7 +1906,7 @@ ${commsMsg}`);
     </div>
   );
 
-  // ===== Render: Notificaciones (JSON/LS) =====
+  // ===== Render: Notificaciones (API SQL) =====
   const renderNotificaciones = () => (
     <div className="notes-wrap">
       <div className="notes-card">
@@ -1624,7 +1920,8 @@ ${commsMsg}`);
             >
               <button
                 className={
-                  "pill" + (notiFilter === "todas" ? " is-active" : "")
+                  "pill" +
+                  (notiFilter === "todas" ? " is-active" : "")
                 }
                 onClick={() => setNotiFilter("todas")}
               >
@@ -1632,7 +1929,10 @@ ${commsMsg}`);
               </button>
               <button
                 className={
-                  "pill" + (notiFilter === "favoritas" ? " is-active" : "")
+                  "pill" +
+                  (notiFilter === "favoritas"
+                    ? " is-active"
+                    : "")
                 }
                 onClick={() => setNotiFilter("favoritas")}
               >
@@ -1640,14 +1940,20 @@ ${commsMsg}`);
               </button>
               <button
                 className={
-                  "pill" + (notiFilter === "no-leidas" ? " is-active" : "")
+                  "pill" +
+                  (notiFilter === "no-leidas"
+                    ? " is-active"
+                    : "")
                 }
                 onClick={() => setNotiFilter("no-leidas")}
               >
                 No leídas
               </button>
             </div>
-            <div className="badge badge--alert" title="Sin leer">
+            <div
+              className="badge badge--alert"
+              title="Sin leer"
+            >
               <span className="badge-dot" /> {unreadCount} sin leer
             </div>
             <button
@@ -1679,13 +1985,17 @@ ${commsMsg}`);
                 <button
                   className="note-fav-btn"
                   title={
-                    n.fav ? "Quitar de favoritos" : "Marcar como favorito"
+                    n.fav
+                      ? "Quitar de favoritos"
+                      : "Marcar como favorito"
                   }
                   onClick={() => toggleFav(n.id)}
                 >
                   {n.fav ? "★" : "☆"}
                 </button>
-                <h3 className="note-title">{n.titulo}</h3>
+                <h3 className="note-title">
+                  {n.titulo}
+                </h3>
                 <div className="note-date">
                   {fmtFechaHora(n.fecha)}
                 </div>
@@ -1693,7 +2003,9 @@ ${commsMsg}`);
                   {n.link && (
                     <button
                       className="note-btn"
-                      onClick={() => window.open(n.link, "_blank")}
+                      onClick={() =>
+                        window.open(n.link, "_blank")
+                      }
                     >
                       Ver
                     </button>
@@ -1707,7 +2019,9 @@ ${commsMsg}`);
                     }
                     onClick={() => toggleLeida(n.id)}
                   >
-                    {n.leida ? "Marcar no leída" : "Marcar leída"}
+                    {n.leida
+                      ? "Marcar no leída"
+                      : "Marcar leída"}
                   </button>
                   <button
                     className="note-btn danger"
@@ -1718,7 +2032,9 @@ ${commsMsg}`);
                 </div>
               </div>
               {n.texto && (
-                <div className="note-detail">{n.texto}</div>
+                <div className="note-detail">
+                  {n.texto}
+                </div>
               )}
             </div>
           ))}
@@ -1777,20 +2093,27 @@ ${commsMsg}`);
                 </button>
               </div>
             ) : (
-              <form className="pwd-form" onSubmit={savePassword}>
+              <form
+                className="pwd-form"
+                onSubmit={savePassword}
+              >
                 <input
                   type="password"
                   className="grades-input"
                   placeholder="Nueva contraseña"
                   value={pwd1}
-                  onChange={(e) => setPwd1(e.target.value)}
+                  onChange={(e) =>
+                    setPwd1(e.target.value)
+                  }
                 />
                 <input
                   type="password"
                   className="grades-input"
                   placeholder="Repetir contraseña"
                   value={pwd2}
-                  onChange={(e) => setPwd2(e.target.value)}
+                  onChange={(e) =>
+                    setPwd2(e.target.value)
+                  }
                 />
                 <div className="row gap-12">
                   <button
@@ -1826,7 +2149,10 @@ ${commsMsg}`);
         </div>
 
         <div className="card__footer--right">
-          <button className="btn" onClick={() => setActive(null)}>
+          <button
+            className="btn"
+            onClick={() => setActive(null)}
+          >
             Volver
           </button>
         </div>
@@ -1871,7 +2197,11 @@ ${commsMsg}`);
       <aside className="sidebar">
         <div className="sidebar__inner">
           <div className="sb-profile">
-            <img src={avatar} alt={displayName} className="sb-avatar" />
+            <img
+              src={avatar}
+              alt={displayName}
+              className="sb-avatar"
+            />
             <p className="sb-role">Preceptor/a</p>
             <p className="sb-name">{displayName}</p>
           </div>
@@ -1886,18 +2216,32 @@ ${commsMsg}`);
                 <button
                   key={it.id}
                   type="button"
-                  onClick={() => setActive(isInicio ? null : it.id)}
-                  className={"sb-item" + (isActive ? " is-active" : "")}
-                  aria-current={isActive ? "page" : undefined}
+                  onClick={() =>
+                    setActive(isInicio ? null : it.id)
+                  }
+                  className={
+                    "sb-item" +
+                    (isActive ? " is-active" : "")
+                  }
+                  aria-current={
+                    isActive ? "page" : undefined
+                  }
                 >
                   <span className="sb-item__icon" />
-                  <span className="sb-item__text">{it.label}</span>
-                  {it.id === "notificaciones" && unreadCount > 0 && (
-                    <span className="sb-badge">{unreadCount}</span>
-                  )}
+                  <span className="sb-item__text">
+                    {it.label}
+                  </span>
+                  {it.id === "notificaciones" &&
+                    unreadCount > 0 && (
+                      <span className="sb-badge">
+                        {unreadCount}
+                      </span>
+                    )}
                   {it.id === "justificaciones" &&
                     pendingJustCount > 0 && (
-                      <span className="sb-badge">{pendingJustCount}</span>
+                      <span className="sb-badge">
+                        {pendingJustCount}
+                      </span>
                     )}
                 </button>
               );
@@ -1915,7 +2259,10 @@ ${commsMsg}`);
         </div>
       </aside>
 
-      <div className="brand brand--click" onClick={() => setActive(null)}>
+      <div
+        className="brand brand--click"
+        onClick={() => setActive(null)}
+      >
         <div className="brand__circle">
           <img
             src="/Logo.png"
@@ -1923,7 +2270,9 @@ ${commsMsg}`);
             className="brand__logo"
           />
         </div>
-        <h1 className="brand__title">Instituto Superior Prisma</h1>
+        <h1 className="brand__title">
+          Instituto Superior Prisma
+        </h1>
       </div>
 
       {renderPanel()}

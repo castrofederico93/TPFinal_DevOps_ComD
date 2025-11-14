@@ -181,7 +181,7 @@ model materias {
 }
 
 model notificaciones {
-  id         Int                    @id
+  id         Int                    @id @default(autoincrement())
   destino    notificaciones_destino
   usuario_id Int?
   fecha      DateTime               @db.Date

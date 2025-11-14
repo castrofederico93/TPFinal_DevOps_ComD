@@ -90,6 +90,21 @@ export async function apiPut(path, data) {
   return handleResponse(res);
 }
 
+// ⬇⬇⬇ NUEVO: apiPatch para la API nueva
+export async function apiPatch(path, data) {
+  const res = await fetch(buildUrl(path), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...authHeader(),
+    },
+    body: JSON.stringify(data ?? {}),
+  });
+  return handleResponse(res);
+}
+// ⬆⬆⬆
+
 export async function apiDelete(path) {
   const res = await fetch(buildUrl(path), {
     method: "DELETE",

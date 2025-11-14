@@ -7,6 +7,9 @@ import {
   getPreceptorAsistenciasFechas,
   getPreceptorAsistenciasLista,
   savePreceptorAsistencias,
+  getPreceptorNotificaciones,
+  updatePreceptorNotificacion,
+  deletePreceptorNotificacion,
 } from "../controllers/preceptores.controller.js";
 
 const router = Router();
@@ -35,6 +38,28 @@ router.post(
   auth,
   allowRoles("preceptor"),
   savePreceptorAsistencias
+);
+
+// Notificaciones
+router.get(
+  "/me/notificaciones",
+  auth,
+  allowRoles("preceptor"),
+  getPreceptorNotificaciones
+);
+
+router.patch(
+  "/me/notificaciones/:id",
+  auth,
+  allowRoles("preceptor"),
+  updatePreceptorNotificacion
+);
+
+router.delete(
+  "/me/notificaciones/:id",
+  auth,
+  allowRoles("preceptor"),
+  deletePreceptorNotificacion
 );
 
 export default router;

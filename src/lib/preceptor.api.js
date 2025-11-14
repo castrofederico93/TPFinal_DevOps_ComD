@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, apiPatch, apiDelete } from "./api";
 
 // Datos del preceptor logueado
 export async function fetchPreceptorMe() {
@@ -73,6 +73,50 @@ export async function savePreceptorAsistencia(payload) {
     return true;
   } catch (err) {
     console.error("savePreceptorAsistencia error", err);
+    return false;
+  }
+}
+
+// Notificaciones del preceptor logueado
+export async function fetchPreceptorNotificaciones() {
+  try {
+    const data = await apiGet("/api/preceptores/me/notificaciones");
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error("fetchPreceptorNotificaciones error", err);
+    return [];
+  }
+}
+
+// Actualizar notificación (leída / favorita)
+// fields: { leida?: boolean, favorito?: boolean }
+export async function updatePreceptorNotificacion(id, fields = {}) {
+  if (!id) return null;
+
+  const payload = {};
+  if (typeof fields.leida === "boolean") payload.leida = fields.leida;
+  if (typeof fields.favorito === "boolean") payload.favorito = fields.favorito;
+
+  if (Object.keys(payload).length === 0) return null;
+
+  try {
+    const data = await apiPatch(
+      `/api/preceptores/me/notificaciones/${encodeURIComponent(id)}`,
+      payload
+    );
+    return data || null;
+  } catch (err) {
+    console.error("updatePreceptorNotificacion error", err);
+    return null;
+  }
+}
+
+export async function deletePreceptorNotificacion(id) {
+  try {
+    await apiDelete(`/api/preceptores/me/notificaciones/${id}`);
+    return true;
+  } catch (err) {
+    console.error("deletePreceptorNotificacion error", err);
     return false;
   }
 }
