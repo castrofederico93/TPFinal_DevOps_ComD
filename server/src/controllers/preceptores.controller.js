@@ -128,3 +128,158 @@ export async function getPreceptorAlumnosMetrics(req, res, next) {
     next(err);
   }
 }
+
+// GET /api/preceptores/me/asistencias/fechas?comisionId=1
+export async function getPreceptorAsistenciasFechas(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const comisionId = Number(req.query.comisionId);
+    if (!comisionId || Number.isNaN(comisionId)) {
+      return res.status(400).json({ error: "comisionId inválido" });
+    }
+
+    const vinculo = await prisma.preceptor_comision.findFirst({
+      where: { preceptor_id: me.id, comision_id: comisionId },
+      select: { comision_id: true },
+    });
+
+    if (!vinculo) {
+      return res.status(403).json({ error: "No autorizado para esta comisión" });
+    }
+
+    const rows = await prisma.$queryRaw`
+      SELECT DISTINCT fecha
+      FROM asistencias
+      WHERE comision_id = ${comisionId}
+      ORDER BY fecha DESC;
+    `;
+
+    const fechas = (rows || []).map((r) => {
+      const d = r.fecha instanceof Date ? r.fecha : new Date(r.fecha);
+      return d.toISOString().slice(0, 10);
+    });
+
+    res.json(fechas);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/preceptores/me/asistencias?comisionId=1&fecha=2025-09-19
+export async function getPreceptorAsistenciasLista(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const comisionId = Number(req.query.comisionId);
+    const fecha = String(req.query.fecha || "");
+
+    if (!comisionId || Number.isNaN(comisionId)) {
+      return res.status(400).json({ error: "comisionId inválido" });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return res.status(400).json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
+    }
+
+    const vinculo = await prisma.preceptor_comision.findFirst({
+      where: { preceptor_id: me.id, comision_id: comisionId },
+      select: { comision_id: true },
+    });
+
+    if (!vinculo) {
+      return res.status(403).json({ error: "No autorizado para esta comisión" });
+    }
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        a.id AS alumnoId,
+        a.apellido,
+        a.nombre,
+        a.dni,
+        asis.estado
+      FROM inscripciones i
+        INNER JOIN alumnos a ON a.id = i.alumno_id
+        INNER JOIN preceptor_comision pc ON pc.comision_id = i.comision_id
+        LEFT JOIN asistencias asis
+          ON asis.alumno_id = i.alumno_id
+         AND asis.comision_id = i.comision_id
+         AND asis.fecha = ${fecha}
+      WHERE i.comision_id = ${comisionId}
+        AND i.estado = 'activa'
+        AND pc.preceptor_id = ${me.id}
+      ORDER BY a.apellido, a.nombre;
+    `;
+
+    const out = (rows || []).map((r) => ({
+      alumnoId: Number(r.alumnoId),
+      apellido: r.apellido,
+      nombre: r.nombre,
+      dni: r.dni,
+      estado: r.estado || "",
+    }));
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/preceptores/me/asistencias
+// body: { comisionId, fecha, items: [{ alumnoId, estado }, ...] }
+export async function savePreceptorAsistencias(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const { comisionId, fecha, items } = req.body || {};
+
+    const comIdNum = Number(comisionId);
+    if (!comIdNum || Number.isNaN(comIdNum)) {
+      return res.status(400).json({ error: "comisionId inválido" });
+    }
+    if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
+      return res.status(400).json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
+    }
+
+    const vinculo = await prisma.preceptor_comision.findFirst({
+      where: { preceptor_id: me.id, comision_id: comIdNum },
+      select: { comision_id: true },
+    });
+
+    if (!vinculo) {
+      return res.status(403).json({ error: "No autorizado para esta comisión" });
+    }
+
+    const allowedEstados = new Set(["P", "A", "T", "J"]);
+
+    const cleanItems = Array.isArray(items)
+      ? items
+          .map((it) => ({
+            alumnoId: Number(it.alumnoId),
+            estado: String(it.estado || "").trim().toUpperCase(),
+          }))
+          .filter((it) => it.alumnoId && allowedEstados.has(it.estado))
+      : [];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        DELETE FROM asistencias
+        WHERE comision_id = ${comIdNum}
+          AND fecha = ${fecha};
+      `;
+
+      for (const it of cleanItems) {
+        await tx.$executeRaw`
+          INSERT INTO asistencias (fecha, alumno_id, comision_id, estado)
+          VALUES (${fecha}, ${it.alumnoId}, ${comIdNum}, ${it.estado});
+        `;
+      }
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}

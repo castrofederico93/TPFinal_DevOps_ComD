@@ -7,7 +7,6 @@ import notisJson from "../data/notificaciones.json";
 import alumnosRaw from "../data/alumnos.json";
 import materiasRaw from "../data/materias.json";
 import califsRaw from "../data/calificaciones.json";
-import asistRawBase from "../data/asistencias.json";
 import justifRaw from "../data/justificaciones.json";
 import docentesRaw from "../data/docentes.json";
 import eventosRaw from "../data/eventos_calendario.json";
@@ -16,6 +15,9 @@ import eventosRaw from "../data/eventos_calendario.json";
 import {
   fetchPreceptorComisiones,
   fetchPreceptorAlumnosMetrics,
+  fetchPreceptorAsistenciaFechas,
+  fetchPreceptorAsistenciaLista,
+  savePreceptorAsistencia,
 } from "../lib/preceptor.api";
 
 // ===== Constantes / Utils =====
@@ -154,36 +156,133 @@ export default function Preceptor() {
     })();
   }, []);
 
-  // ===== Asistencias (JSON todavía) =====
-  const [asistDb, setAsistDb] = useState(asistRawBase || []);
-  const [comisionSel, setComisionSel] = useState(() => comisionesOptions[0] || "");
-
+    // ===== Asistencias (API SQL) =====
   const todayISO = useMemo(() => ymd(new Date()), []);
-  const [fechaAsis, setFechaAsis] = useState(todayISO);
 
-  // Fechas disponibles por comisión
-  const dateOptions = useMemo(() => {
-    if (!comisionSel) return [{ value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` }];
-    const [materiaId, com] = comisionSel.split("_");
-    const fechas = asistDb
-      .filter((a) => a.materiaId === materiaId && a.comision === com)
-      .map((a) => a.fecha);
-    const uniq = Array.from(new Set(fechas))
-      .sort((a, b) => b.localeCompare(a))
-      .map((v) => ({ value: v, label: fmtFecha(v) }));
-    if (!uniq.find((o) => o.value === todayISO)) {
-      uniq.unshift({ value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` });
-    }
-    return uniq.length ? uniq : [{ value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` }];
-  }, [asistDb, comisionSel, todayISO]);
+  const [comisionSel, setComisionSel] = useState("");
+  const [fechaAsis, setFechaAsis] = useState(todayISO);
+  const [fechaOptions, setFechaOptions] = useState([
+    { value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` },
+  ]);
+
+  const [asistenciaList, setAsistenciaList] = useState([]);
+  const [loadingAsistencia, setLoadingAsistencia] = useState(false);
+  const [errAsistencia, setErrAsistencia] = useState(null);
+
+  const comisionesAsistOptions = useMemo(
+  () =>
+    (comisionesDb || []).map((c) => ({
+      value: c.id,
+      label: `${c.comision ?? "-"} — ${c.materia?.nombre ?? "-"}${
+        c.horario ? " — " + c.horario : ""
+      }`,
+    })),
+  [comisionesDb]
+);
 
   useEffect(() => {
-    if (!dateOptions.find((o) => o.value === fechaAsis)) {
-      setFechaAsis(dateOptions[0]?.value || todayISO);
+    if (!comisionSel && comisionesAsistOptions.length > 0) {
+      setComisionSel(String(comisionesAsistOptions[0].value));
     }
-  }, [dateOptions, fechaAsis, todayISO]);
+  }, [comisionSel, comisionesAsistOptions]);
 
-  // Alumnos por comisión (desde calificaciones JSON, usado en otros paneles)
+  useEffect(() => {
+  const loadFechas = async () => {
+    if (!comisionSel) return;
+    try {
+      const data = await fetchPreceptorAsistenciaFechas(comisionSel);
+      let opts = Array.isArray(data)
+        ? data.map((f) => ({ value: f, label: fmtFecha(f) }))
+        : [];
+
+      if (!opts.find((o) => o.value === todayISO)) {
+        opts.unshift({
+          value: todayISO,
+          label: `${fmtFecha(todayISO)} (hoy)`,
+        });
+      }
+      if (opts.length === 0) {
+        opts = [
+          { value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` },
+        ];
+      }
+
+      setFechaOptions(opts);
+    } catch (err) {
+      console.error("fetchPreceptorAsistenciaFechas error", err);
+      setFechaOptions([
+        { value: todayISO, label: `${fmtFecha(todayISO)} (hoy)` },
+      ]);
+    }
+  };
+  loadFechas();
+}, [comisionSel, todayISO]);
+
+  useEffect(() => {
+    const loadLista = async () => {
+      if (!comisionSel || !fechaAsis) return;
+      try {
+        setLoadingAsistencia(true);
+        setErrAsistencia(null);
+        const data = await fetchPreceptorAsistenciaLista(
+          comisionSel,
+          fechaAsis
+        );
+        const filas = (data || []).map((r) => ({
+          id: r.alumnoId,
+          alumnoId: r.alumnoId,
+          apellido: r.apellido || "-",
+          nombre: r.nombre || "-",
+          dni: r.dni || "-",
+          estado: r.estado || "",
+        }));
+        setAsistenciaList(filas);
+      } catch (err) {
+        console.error("fetchPreceptorAsistenciaLista error", err);
+        setErrAsistencia("No se pudo cargar la asistencia.");
+        setAsistenciaList([]);
+      } finally {
+        setLoadingAsistencia(false);
+      }
+    };
+    loadLista();
+  }, [comisionSel, fechaAsis]);
+
+  const setEstado = (id, v) =>
+    setAsistenciaList((p) =>
+      p.map((r) => (r.id === id ? { ...r, estado: v } : r))
+    );
+
+  const marcarTodos = (v) =>
+    setAsistenciaList((p) => p.map((r) => ({ ...r, estado: v })));
+
+  const limpiarAsistencia = () => marcarTodos("");
+
+  const guardarAsistencia = async () => {
+    if (!comisionSel || !fechaAsis) return;
+    const payload = {
+      comisionId: Number(comisionSel),
+      fecha: fechaAsis,
+      items: asistenciaList.map((a) => ({
+        alumnoId: a.alumnoId,
+        estado: a.estado || "",
+      })),
+    };
+    const ok = await savePreceptorAsistencia(payload);
+    if (ok) {
+      alert("Asistencia guardada.");
+      if (!fechaOptions.find((o) => o.value === fechaAsis)) {
+        setFechaOptions((prev) => [
+          ...prev,
+          { value: fechaAsis, label: fmtFecha(fechaAsis) },
+        ]);
+      }
+    } else {
+      alert("No se pudo guardar la asistencia.");
+    }
+  };
+
+  // Alumnos por comisión (desde calificaciones JSON, usado en Comunicaciones)
   const alumnosDeComision = useMemo(() => {
     const map = new Map();
     for (const r of califsRaw) {
@@ -193,41 +292,6 @@ export default function Preceptor() {
     }
     return map;
   }, []);
-
-  // Tabla de asistencia
-  const [asistenciaList, setAsistenciaList] = useState([]);
-  useEffect(() => {
-    if (!comisionSel || !fechaAsis) return;
-    const [materiaId, com] = comisionSel.split("_");
-    const ids = Array.from(alumnosDeComision.get(comisionSel) || new Set());
-    const prev = asistDb.filter((r) => r.materiaId === materiaId && r.comision === com && r.fecha === fechaAsis);
-    const byId = Object.fromEntries(prev.map((r) => [r.alumnoId, r.estado]));
-    const filas = ids.map((id) => {
-      const a = alumnosById[id] || {};
-      return { id, apellido: a.apellido || "-", nombre: a.nombre || "-", dni: a.dni || "-", estado: byId[id] || "" };
-    });
-    setAsistenciaList(filas);
-  }, [comisionSel, fechaAsis, asistDb, alumnosById, alumnosDeComision]);
-
-  const setEstado = (id, v) => setAsistenciaList((p) => p.map((r) => (r.id === id ? { ...r, estado: v } : r)));
-  const marcarTodos = (v) => setAsistenciaList((p) => p.map((r) => ({ ...r, estado: v })));
-  const limpiarAsistencia = () => marcarTodos("");
-  const guardarAsistencia = () => {
-    if (!comisionSel || !fechaAsis) return;
-    const [materiaId, com] = comisionSel.split("_");
-    const nuevos = asistenciaList.map((a) => ({
-      fecha: fechaAsis,
-      materiaId,
-      comision: com,
-      alumnoId: a.id,
-      estado: a.estado || "",
-    }));
-    const restantes = asistDb.filter(
-      (r) => !(r.fecha === fechaAsis && r.materiaId === materiaId && r.comision === com)
-    );
-    setAsistDb([...restantes, ...nuevos]);
-    alert("Asistencia guardada (mock en memoria).");
-  };
 
   // ===== Justificaciones (LS + JSON) =====
   const JUSTI_STORAGE_KEY = "pp4_preceptor_justificaciones";
@@ -684,97 +748,125 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Asistencia (JSON) =====
-  const renderAsistencia = () => (
-    <div className="content">
-      <div className="enroll-header mb-6">
-        <h1 className="enroll-title">Asistencia</h1>
-      </div>
+   // ===== Render: Asistencia (API SQL) =====
+  const renderAsistencia = () => {
+    const hasComisiones = comisionesAsistOptions.length > 0;
 
-      <div className="filters-row">
-        <span className="label">Comisión:</span>
-        <select
-          className="grades-input w-220"
-          value={comisionSel}
-          onChange={(e) => setComisionSel(e.target.value)}
-        >
-          {comisionesOptions.map((id) => (
-            <option key={id} value={id}>
-              {id}
-            </option>
-          ))}
-        </select>
+    return (
+      <div className="content">
+        <div className="enroll-header mb-6">
+          <h1 className="enroll-title">Asistencia</h1>
+        </div>
 
-        <span className="label ml-18">Fecha:</span>
-        <select
-          className="grades-input w-220"
-          value={fechaAsis}
-          onChange={(e) => setFechaAsis(e.target.value)}
-        >
-          {dateOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="filters-row">
+          <span className="label">Comisión:</span>
+          <select
+            className="grades-input w-220"
+            value={comisionSel}
+            onChange={(e) => setComisionSel(e.target.value)}
+            disabled={!hasComisiones}
+          >
+            {!hasComisiones && <option value="">Sin comisiones</option>}
+            {comisionesAsistOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
 
-      <div className="enroll-card card--pad-lg">
-        <div className="grades-table-wrap">
-          <table className="grades-table w-full">
-            <thead>
-              <tr>
-                <th>Apellido</th>
-                <th>Nombre</th>
-                <th>DNI</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {asistenciaList.map((a) => (
-                <tr key={a.id}>
-                  <td>{a.apellido}</td>
-                  <td>{a.nombre}</td>
-                  <td>{a.dni}</td>
-                  <td>
-                    <select
-                      className="grades-input"
-                      value={a.estado}
-                      onChange={(e) => setEstado(a.id, e.target.value)}
-                    >
-                      <option value=""></option>
-                      <option value="P">P</option>
-                      <option value="A">A</option>
-                      <option value="T">T</option>
-                      <option value="J">J</option>
-                    </select>
-                  </td>
+          <span className="label ml-18">Fecha:</span>
+<input
+  type="date"
+  className="grades-input w-220"
+  value={fechaAsis}
+  onChange={(e) => setFechaAsis(e.target.value)}
+  disabled={!hasComisiones}
+/>
+        </div>
+
+        <div className="enroll-card card--pad-lg">
+          {loadingAsistencia && (
+            <div className="muted mb-8">Cargando asistencia...</div>
+          )}
+          {errAsistencia && !loadingAsistencia && (
+            <div className="muted mb-8">{errAsistencia}</div>
+          )}
+
+          <div className="grades-table-wrap">
+            <table className="grades-table w-full">
+              <thead>
+                <tr>
+                  <th>Apellido</th>
+                  <th>Nombre</th>
+                  <th>DNI</th>
+                  <th>Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {asistenciaList.map((a) => (
+                  <tr key={a.id}>
+                    <td>{a.apellido}</td>
+                    <td>{a.nombre}</td>
+                    <td>{a.dni}</td>
+                    <td>
+                      <select
+                        className="grades-input"
+                        value={a.estado}
+                        onChange={(e) => setEstado(a.id, e.target.value)}
+                      >
+                        <option value=""></option>
+                        <option value="P">P</option>
+                        <option value="A">A</option>
+                        <option value="T">T</option>
+                        <option value="J">J</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+                {asistenciaList.length === 0 && !loadingAsistencia && (
+                  <tr>
+                    <td colSpan={4} className="muted text-center">
+                      No hay alumnos para mostrar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        <div className="card__actions--left">
-          <button className="btn btn--success" onClick={guardarAsistencia}>
-            Guardar
-          </button>
-          <button className="btn" onClick={() => marcarTodos("P")}>
-            Marcar todos con P
-          </button>
-          <button className="btn btn--danger" onClick={limpiarAsistencia}>
-            Limpiar
-          </button>
-        </div>
+          <div className="card__actions--left">
+            <button
+              className="btn btn--success"
+              onClick={guardarAsistencia}
+              disabled={!hasComisiones}
+            >
+              Guardar
+            </button>
+            <button
+              className="btn"
+              onClick={() => marcarTodos("P")}
+              disabled={!hasComisiones}
+            >
+              Marcar todos con P
+            </button>
+            <button
+              className="btn btn--danger"
+              onClick={limpiarAsistencia}
+              disabled={!hasComisiones}
+            >
+              Limpiar
+            </button>
+          </div>
 
-        <div className="card__footer--right">
-          <button className="btn" onClick={() => setActive(null)}>
-            Volver
-          </button>
+          <div className="card__footer--right">
+            <button className="btn" onClick={() => setActive(null)}>
+              Volver
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ===== Render: Justificaciones (JSON) =====
   const renderJustificaciones = () => {
