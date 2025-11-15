@@ -93,7 +93,6 @@ model comisiones {
   docente_id         Int?
   letra              String?              @db.VarChar(10)
   horario            String?              @db.VarChar(80)
-  estado             comisiones_estado    @default(Inscripci_n)
   cupo               Int?
   sede               String?              @db.VarChar(80)
   aula               String?              @db.VarChar(40)
@@ -239,10 +238,4 @@ enum justificaciones_estado {
   pendiente
   aprobada
   rechazada
-}
-
-enum comisiones_estado {
-  Inscripci_n @map("Inscripción")
-  En_curso    @map("En curso")
-  Finalizado
 }

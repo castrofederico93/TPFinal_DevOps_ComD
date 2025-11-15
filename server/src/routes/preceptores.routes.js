@@ -10,6 +10,7 @@ import {
   getPreceptorNotificaciones,
   updatePreceptorNotificacion,
   deletePreceptorNotificacion,
+  sendPreceptorComunicacion,
 } from "../controllers/preceptores.controller.js";
 
 const router = Router();
@@ -60,6 +61,13 @@ router.delete(
   auth,
   allowRoles("preceptor"),
   deletePreceptorNotificacion
+);
+
+router.post(
+  "/me/comunicaciones",
+  auth,
+  allowRoles("preceptor"),
+  sendPreceptorComunicacion
 );
 
 export default router;

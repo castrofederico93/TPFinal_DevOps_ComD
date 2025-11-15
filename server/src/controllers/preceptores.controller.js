@@ -1,5 +1,58 @@
 import prisma from "../db/prisma.js";
 
+function parseDiaSemanaFromHorario(horario) {
+  if (!horario) return null;
+
+  const [diaRaw] = String(horario).trim().split(/\s+/);
+  if (!diaRaw) return null;
+
+  const diaNorm = diaRaw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const map = {
+    lunes: 1,
+    martes: 2,
+    miercoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sabado: 6,
+    domingo: 0,
+  };
+
+  if (!(diaNorm in map)) return null;
+  return map[diaNorm];
+}
+
+function todayInBuenosAiresDate() {
+  const now = new Date();
+
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const parts = fmt.formatToParts(now);
+  const year = parts.find((p) => p.type === "year").value;
+  const month = parts.find((p) => p.type === "month").value;
+  const day = parts.find((p) => p.type === "day").value;
+
+  const isoDate = `${year}-${month}-${day}`; // YYYY-MM-DD
+  return new Date(isoDate + "T00:00:00Z");
+}
+
+function formatDateLocal(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 async function getPreceptorOr404(req, res) {
   const me = await prisma.preceptores.findFirst({
     where: { usuario_id: req.user.sub },
@@ -42,7 +95,6 @@ export async function getPreceptorComisiones(req, res, next) {
             cupo: true,
             sede: true,
             aula: true,
-            estado: true,
             materias: { select: { id: true, codigo: true, nombre: true } },
             docentes: { select: { id: true, nombre: true, apellido: true } },
           },
@@ -65,7 +117,7 @@ export async function getPreceptorComisiones(req, res, next) {
         sede: c.sede || "Central",
         aula: c.aula || "A confirmar",
         docente: c.docentes ? `${c.docentes.nombre} ${c.docentes.apellido}` : "-",
-        estado: c.estado || "Inscripción",
+        estado: c.estado || "Activo",
         cupo: c.cupo ?? null,
       };
     });
@@ -158,7 +210,7 @@ export async function getPreceptorAsistenciasFechas(req, res, next) {
 
     const fechas = (rows || []).map((r) => {
       const d = r.fecha instanceof Date ? r.fecha : new Date(r.fecha);
-      return d.toISOString().slice(0, 10);
+      return formatDateLocal(d) || "";
     });
 
     res.json(fechas);
@@ -229,7 +281,6 @@ export async function getPreceptorAsistenciasLista(req, res, next) {
 }
 
 // POST /api/preceptores/me/asistencias
-// body: { comisionId, fecha, items: [{ alumnoId, estado }, ...] }
 export async function savePreceptorAsistencias(req, res, next) {
   try {
     const me = await getPreceptorOr404(req, res);
@@ -254,6 +305,25 @@ export async function savePreceptorAsistencias(req, res, next) {
 
     if (!vinculo) {
       return res.status(403).json({ error: "No autorizado para esta comisión" });
+    }
+
+    const comision = await prisma.comisiones.findUnique({
+      where: { id: comIdNum },
+      select: { horario: true, codigo: true },
+    });
+
+    if (comision && comision.horario) {
+      const expectedDow = parseDiaSemanaFromHorario(comision.horario);
+      if (expectedDow != null) {
+        const fechaObj = new Date(`${fecha}T00:00:00`);
+        const actualDow = fechaObj.getDay();
+
+        if (actualDow !== expectedDow) {
+          return res.status(400).json({
+            error: `La fecha seleccionada (${fecha}) no coincide con el día de cursada de la comisión (${comision.horario}).`,
+          });
+        }
+      }
     }
 
     const allowedEstados = new Set(["P", "A", "T", "J"]);
@@ -298,7 +368,7 @@ export async function getPreceptorNotificaciones(req, res, next) {
 
     const rows = await prisma.notificaciones.findMany({
       where: {
-        usuario_id: userId, // solo personales
+        usuario_id: userId,
       },
       orderBy: [{ fecha: "desc" }, { id: "desc" }],
     });
@@ -307,8 +377,7 @@ export async function getPreceptorNotificaciones(req, res, next) {
       id: n.id,
       destino: n.destino,
       usuarioId: n.usuario_id,
-      fecha:
-        n.fecha instanceof Date ? n.fecha.toISOString().slice(0, 10) : n.fecha,
+      fecha: n.fecha ? formatDateLocal(n.fecha) : null,
       titulo: n.titulo,
       detalle: n.detalle || "",
       tipo: n.tipo || "info",
@@ -366,10 +435,7 @@ export async function updatePreceptorNotificacion(req, res, next) {
       id: updated.id,
       destino: updated.destino,
       usuarioId: updated.usuario_id,
-      fecha:
-        updated.fecha instanceof Date
-          ? updated.fecha.toISOString().slice(0, 10)
-          : updated.fecha,
+      fecha: updated.fecha ? formatDateLocal(updated.fecha) : null,
       titulo: updated.titulo,
       detalle: updated.detalle || "",
       tipo: updated.tipo || "info",
@@ -412,6 +478,149 @@ export async function deletePreceptorNotificacion(req, res, next) {
     });
 
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function sendPreceptorComunicacion(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const { asunto, mensaje, comisionIds, otrosEmails } = req.body || {};
+
+    const subject = String(asunto || "").trim();
+    const body = String(mensaje || "").trim();
+
+    if (!subject) {
+      return res.status(400).json({ error: "El asunto es obligatorio." });
+    }
+    if (!body) {
+      return res.status(400).json({ error: "El mensaje es obligatorio." });
+    }
+
+    const comIds = Array.isArray(comisionIds)
+      ? comisionIds
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+
+    const emailList = Array.isArray(otrosEmails)
+      ? otrosEmails
+          .map((e) => String(e).trim().toLowerCase())
+          .filter((e) => e.length > 0)
+      : [];
+
+    const uniqueEmails = Array.from(new Set(emailList));
+
+    const destinatarios = new Map();
+    const emailsSinUsuario = [];
+
+    // Destinatarios por comisión (alumnos de esas comisiones)
+    for (const comId of comIds) {
+      const vinculo = await prisma.preceptor_comision.findFirst({
+        where: { preceptor_id: me.id, comision_id: comId },
+        select: { comision_id: true },
+      });
+      if (!vinculo) continue;
+
+      const rows = await prisma.$queryRaw`
+        SELECT DISTINCT
+          u.id AS usuarioId
+        FROM inscripciones i
+          INNER JOIN alumnos a ON a.id = i.alumno_id
+          INNER JOIN usuarios u ON u.id = a.usuario_id
+        WHERE i.estado = 'activa'
+          AND i.comision_id = ${comId}
+          AND a.usuario_id IS NOT NULL;
+      `;
+
+      for (const r of rows || []) {
+        const uid = Number(r.usuarioId);
+        if (!uid || Number.isNaN(uid)) continue;
+        if (!destinatarios.has(uid)) {
+          destinatarios.set(uid, "alumno");
+        }
+      }
+    }
+
+    // Destinatarios por email (alumnos o docentes con usuario)
+    for (const email of uniqueEmails) {
+      let found = false;
+
+      const rowsAlum = await prisma.$queryRaw`
+        SELECT u.id AS usuarioId
+        FROM alumnos a
+          INNER JOIN usuarios u ON u.id = a.usuario_id
+        WHERE a.usuario_id IS NOT NULL
+          AND LOWER(a.email) = ${email}
+        LIMIT 1;
+      `;
+      if (rowsAlum && rowsAlum.length > 0) {
+        const uid = Number(rowsAlum[0].usuarioId);
+        if (uid && !Number.isNaN(uid) && !destinatarios.has(uid)) {
+          destinatarios.set(uid, "alumno");
+        }
+        found = true;
+      }
+
+      if (!found) {
+        const rowsDoc = await prisma.$queryRaw`
+          SELECT u.id AS usuarioId
+          FROM docentes d
+            INNER JOIN usuarios u ON u.id = d.usuario_id
+          WHERE d.usuario_id IS NOT NULL
+            AND LOWER(d.email) = ${email}
+          LIMIT 1;
+        `;
+        if (rowsDoc && rowsDoc.length > 0) {
+          const uid = Number(rowsDoc[0].usuarioId);
+          if (uid && !Number.isNaN(uid) && !destinatarios.has(uid)) {
+            destinatarios.set(uid, "docente");
+          }
+          found = true;
+        }
+      }
+
+      if (!found) {
+        emailsSinUsuario.push(email);
+      }
+    }
+
+    if (destinatarios.size === 0) {
+      return res.status(400).json({
+        error:
+          "No se encontraron destinatarios con usuario asociado para este comunicado.",
+        emailsSinUsuario,
+      });
+    }
+
+    const now = todayInBuenosAiresDate();
+
+    const dataToInsert = Array.from(destinatarios.entries()).map(
+      ([usuarioId, destino]) => ({
+        destino,
+        usuario_id: usuarioId,
+        fecha: now,
+        titulo: subject,
+        detalle: body,
+        tipo: "comunicacion",
+        leida: false,
+        favorito: false,
+        link: null,
+      })
+    );
+
+    const result = await prisma.notificaciones.createMany({
+      data: dataToInsert,
+    });
+
+    res.status(201).json({
+      totalDestinatarios: destinatarios.size,
+      totalNotificaciones: result?.count ?? dataToInsert.length,
+      emailsSinUsuario,
+    });
   } catch (err) {
     next(err);
   }

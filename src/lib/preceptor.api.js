@@ -70,12 +70,16 @@ export async function fetchPreceptorAsistenciaLista(comisionId, fecha) {
 export async function savePreceptorAsistencia(payload) {
   try {
     await apiPost("/api/preceptores/me/asistencias", payload);
-    return true;
+    return { ok: true };
   } catch (err) {
     console.error("savePreceptorAsistencia error", err);
-    return false;
+    return {
+      ok: false,
+      error: err?.message || "No se pudo guardar la asistencia.",
+    };
   }
 }
+
 
 // Notificaciones del preceptor logueado
 export async function fetchPreceptorNotificaciones() {
@@ -112,11 +116,27 @@ export async function updatePreceptorNotificacion(id, fields = {}) {
 }
 
 export async function deletePreceptorNotificacion(id) {
+  if (!id) return false;
   try {
-    await apiDelete(`/api/preceptores/me/notificaciones/${id}`);
+    await apiDelete(
+      `/api/preceptores/me/notificaciones/${encodeURIComponent(id)}`
+    );
     return true;
   } catch (err) {
     console.error("deletePreceptorNotificacion error", err);
     return false;
+  }
+}
+
+export async function sendPreceptorComunicado(payload) {
+  try {
+    const data = await apiPost("/api/preceptores/me/comunicaciones", payload);
+    return { ok: true, data };
+  } catch (err) {
+    console.error("sendPreceptorComunicado error", err);
+    return {
+      ok: false,
+      error: err?.message || "No se pudo enviar el comunicado.",
+    };
   }
 }

@@ -20,6 +20,7 @@ import {
   fetchPreceptorNotificaciones,
   updatePreceptorNotificacion,
   deletePreceptorNotificacion,
+  sendPreceptorComunicado,
 } from "../lib/preceptor.api";
 
 // ===== Constantes / Utils =====
@@ -162,6 +163,15 @@ export default function Preceptor() {
       String(a).localeCompare(String(b))
     );
   }, [comisionesDb, alumnosMetrics]);
+
+  const comisionesCommsOptions = useMemo(
+  () =>
+    (comisionesDb || []).map((c) => ({
+      value: String(c.id),
+      label: `${c.comision ?? "-"} — ${c.materia?.nombre ?? "-"}`,
+    })),
+  [comisionesDb]
+);
 
   // Carga de comisiones SQL
   useEffect(() => {
@@ -306,28 +316,30 @@ export default function Preceptor() {
   const limpiarAsistencia = () => marcarTodos("");
 
   const guardarAsistencia = async () => {
-    if (!comisionSel || !fechaAsis) return;
-    const payload = {
-      comisionId: Number(comisionSel),
-      fecha: fechaAsis,
-      items: asistenciaList.map((a) => ({
-        alumnoId: a.alumnoId,
-        estado: a.estado || "",
-      })),
-    };
-    const ok = await savePreceptorAsistencia(payload);
-    if (ok) {
-      alert("Asistencia guardada.");
-      if (!fechaOptions.find((o) => o.value === fechaAsis)) {
-        setFechaOptions((prev) => [
-          ...prev,
-          { value: fechaAsis, label: fmtFecha(fechaAsis) },
-        ]);
-      }
-    } else {
-      alert("No se pudo guardar la asistencia.");
-    }
+  if (!comisionSel || !fechaAsis) return;
+  const payload = {
+    comisionId: Number(comisionSel),
+    fecha: fechaAsis,
+    items: asistenciaList.map((a) => ({
+      alumnoId: a.alumnoId,
+      estado: a.estado || "",
+    })),
   };
+
+  const result = await savePreceptorAsistencia(payload);
+
+  if (result?.ok) {
+    alert("Asistencia guardada.");
+    if (!fechaOptions.find((o) => o.value === fechaAsis)) {
+      setFechaOptions((prev) => [
+        ...prev,
+        { value: fechaAsis, label: fmtFecha(fechaAsis) },
+      ]);
+    }
+  } else {
+    alert(result?.error || "No se pudo guardar la asistencia.");
+  }
+};
 
   // Alumnos por comisión (desde calificaciones JSON, usado en Comunicaciones)
   const alumnosDeComision = useMemo(() => {
@@ -557,57 +569,96 @@ export default function Preceptor() {
     setIsModalOpen(false);
   };
 
-  // ===== Comunicaciones (JSON) =====
-  const [commsSubject, setCommsSubject] = useState("");
-  const [commsComSel, setCommsComSel] = useState("");
-  const [commsComs, setCommsComs] = useState([]);
-  const [commsOtros, setCommsOtros] = useState("");
-  const [commsMsg, setCommsMsg] = useState("");
-  const COMMS_MAX = 1000;
+  // ===== Comunicaciones (SQL + emails) =====
+const [commsSubject, setCommsSubject] = useState("");
+const [commsComSel, setCommsComSel] = useState("");
+const [commsComs, setCommsComs] = useState([]);
+const [commsOtros, setCommsOtros] = useState("");
+const [commsMsg, setCommsMsg] = useState("");
+const [sendingComms, setSendingComms] = useState(false);
+const COMMS_MAX = 1000;
 
-  const comisionesFiltradas = useMemo(
-    () => comisionesOptions.filter((id) => !commsComs.includes(id)),
-    [comisionesOptions, commsComs]
-  );
+const comisionesFiltradas = useMemo(
+  () =>
+    comisionesCommsOptions.filter((opt) => !commsComs.includes(opt.value)),
+  [comisionesCommsOptions, commsComs]
+);
 
-  const addComision = (id) => {
-    if (!id) return;
-    setCommsComs((p) => (p.includes(id) ? p : [...p, id]));
-    setCommsComSel("");
+const addComision = (id) => {
+  if (!id) return;
+  setCommsComs((p) => (p.includes(id) ? p : [...p, id]));
+  setCommsComSel("");
+};
+
+const removeComision = (id) =>
+  setCommsComs((p) => p.filter((c) => c !== id));
+
+const recipients = useMemo(() => {
+  const mailsOtros = commsOtros
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return Array.from(new Set(mailsOtros));
+}, [commsOtros]);
+
+const labelComision = (id) =>
+  comisionesCommsOptions.find((opt) => opt.value === id)?.label || id;
+
+const enviarComunicado = async () => {
+  const asunto = commsSubject.trim();
+  const mensaje = commsMsg.trim();
+
+  if (!asunto) {
+    alert("Ingresá un asunto.");
+    return;
+  }
+  if (!mensaje) {
+    alert("Escribe un mensaje.");
+    return;
+  }
+  if (commsComs.length === 0 && recipients.length === 0) {
+    alert("Elegí al menos una comisión o un correo.");
+    return;
+  }
+
+  const payload = {
+    asunto,
+    mensaje,
+    comisionIds: commsComs
+      .map((id) => Number(id))
+      .filter((n) => Number.isFinite(n) && n > 0),
+    otrosEmails: recipients,
   };
-  const removeComision = (id) =>
-    setCommsComs((p) => p.filter((c) => c !== id));
 
-  const recipients = useMemo(() => {
-    const mailsFromComs = commsComs.flatMap((key) => {
-      const ids = alumnosDeComision.get(key) || new Set();
-      return Array.from(ids)
-        .map((uid) => alumnosById[uid]?.email)
-        .filter(Boolean);
-    });
-    const mailsOtros = commsOtros
-      .split(/[,;\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return Array.from(new Set([...mailsFromComs, ...mailsOtros]));
-  }, [commsComs, commsOtros, alumnosDeComision, alumnosById]);
+  setSendingComms(true);
+  const result = await sendPreceptorComunicado(payload);
+  setSendingComms(false);
 
-  const enviarComunicado = () => {
-    if (!commsSubject.trim()) return alert("Ingresá un asunto.");
-    if (!commsMsg.trim()) return alert("Escribe un mensaje.");
-    if (recipients.length === 0)
-      return alert("Elegí al menos un destinatario.");
-    alert(`Enviado (mock)
-Asunto: ${commsSubject}
-Destinatarios: ${recipients.length}
-Comisiones: ${commsComs.join(", ")}
-Mensaje:
-${commsMsg}`);
-    setCommsSubject("");
-    setCommsMsg("");
-    setCommsOtros("");
-    setCommsComs([]);
-  };
+  if (!result.ok) {
+    alert(result.error || "No se pudo enviar el comunicado.");
+    return;
+  }
+
+  const data = result.data || {};
+  let msgAlert = `Comunicado enviado.\nNotificaciones creadas: ${
+    data.totalNotificaciones ?? data.totalDestinatarios ?? 0
+  }.`;
+
+  if (data.emailsSinUsuario && data.emailsSinUsuario.length > 0) {
+    msgAlert += `\n\nSe omitieron ${
+      data.emailsSinUsuario.length
+    } correo(s) sin usuario asociado:\n- ${data.emailsSinUsuario.join(
+      "\n- "
+    )}`;
+  }
+
+  alert(msgAlert);
+
+  setCommsSubject("");
+  setCommsMsg("");
+  setCommsOtros("");
+  setCommsComs([]);
+};
 
   // ===== Notificaciones (API SQL) =====
   const toIso = (d) =>
@@ -1796,115 +1847,108 @@ ${commsMsg}`);
     );
   };
 
-  // ===== Render: Comunicaciones (JSON) =====
+  // ===== Render: Comunicaciones (SQL) =====
   const renderComunicaciones = () => (
-    <div className="content">
-      <div className="enroll-header mb-6">
-        <h1 className="enroll-title">Emitir Comunicado</h1>
+  <div className="content">
+    <div className="enroll-header mb-6">
+      <h1 className="enroll-title">Emitir Comunicado</h1>
+    </div>
+
+    <div className="enroll-card card--pad-md">
+      <div className="comms-legend">
+        <strong>Elegir Destinatario/s</strong>
+        <span className="comms-help">
+          (podés filtrar por comisión y agregar correos manualmente)
+        </span>
       </div>
 
-      <div className="enroll-card card--pad-md">
-        <div className="comms-legend">
-          <strong>Elegir Destinatario/s</strong>
-          <span className="comms-help">
-            (podés filtrar por comisión y agregar correos
-            manualmente)
-          </span>
-        </div>
-
-        <div className="form-row">
-          <label className="form-label">Comisión:</label>
-          <div className="comms-combo">
-            <select
-              className="grades-input"
-              value={commsComSel}
-              onChange={(e) => addComision(e.target.value)}
-            >
-              <option value="">— seleccionar —</option>
-              {comisionesFiltradas.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
-            </select>
-            <div className="chips">
-              {commsComs.map((id) => (
-                <span
-                  key={id}
-                  className="chip"
-                  title="Quitar"
-                  onClick={() => removeComision(id)}
-                >
-                  {id} <b>×</b>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="form-row">
-          <label className="form-label">Otros:</label>
-          <input
-            className="grades-input w-full"
-            placeholder="Correos separados por coma, espacio o ;"
-            value={commsOtros}
-            onChange={(e) =>
-              setCommsOtros(e.target.value)
-            }
-          />
-        </div>
-
-        <div className="form-row">
-          <label className="form-label">Asunto:</label>
-          <input
-            className="grades-input w-full"
-            placeholder="Asunto del comunicado"
-            value={commsSubject}
-            onChange={(e) =>
-              setCommsSubject(e.target.value)
-            }
-          />
-        </div>
-
-        <div className="comms-msg">
-          <div className="comms-msg__head">
-            <div className="comms-msg__title">
-              Escribe tu mensaje aquí:
-            </div>
-            <button
-              className="btn btn-primary"
-              onClick={enviarComunicado}
-            >
-              Enviar
-            </button>
-          </div>
-          <textarea
-            className="comms-textarea"
-            maxLength={COMMS_MAX}
-            value={commsMsg}
-            onChange={(e) =>
-              setCommsMsg(e.target.value)
-            }
-            placeholder="Mensaje para los destinatarios..."
-          />
-          <div className="comms-meta">
-            {recipients.length} destinatario
-            {recipients.length === 1 ? "" : "s"} ·{" "}
-            {commsMsg.length}/{COMMS_MAX}
-          </div>
-        </div>
-
-        <div className="card__footer--right">
-          <button
-            className="btn"
-            onClick={() => setActive(null)}
+      <div className="form-row">
+        <label className="form-label">Comisión:</label>
+        <div className="comms-combo">
+          <select
+            className="grades-input"
+            value={commsComSel}
+            onChange={(e) => addComision(e.target.value)}
           >
-            Volver
+            <option value="">— seleccionar —</option>
+            {comisionesFiltradas.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <div className="chips">
+            {commsComs.map((id) => (
+              <span
+                key={id}
+                className="chip"
+                title="Quitar"
+                onClick={() => removeComision(id)}
+              >
+                {labelComision(id)} <b>×</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="form-row">
+        <label className="form-label">Otros:</label>
+        <input
+          className="grades-input w-full"
+          placeholder="Correos separados por coma, espacio o ;"
+          value={commsOtros}
+          onChange={(e) => setCommsOtros(e.target.value)}
+        />
+      </div>
+
+      <div className="form-row">
+        <label className="form-label">Asunto:</label>
+        <input
+          className="grades-input w-full"
+          placeholder="Asunto del comunicado"
+          value={commsSubject}
+          onChange={(e) => setCommsSubject(e.target.value)}
+        />
+      </div>
+
+      <div className="comms-msg">
+        <div className="comms-msg__head">
+          <div className="comms-msg__title">Escribe tu mensaje aquí:</div>
+          <button
+            className="btn btn-primary"
+            onClick={enviarComunicado}
+            disabled={sendingComms}
+          >
+            {sendingComms ? "Enviando..." : "Enviar"}
           </button>
         </div>
+        <textarea
+          className="comms-textarea"
+          maxLength={COMMS_MAX}
+          value={commsMsg}
+          onChange={(e) => setCommsMsg(e.target.value)}
+          placeholder="Mensaje para los destinatarios..."
+        />
+        <div className="comms-meta">
+          {commsComs.length} comisión
+          {commsComs.length === 1 ? "" : "es"} seleccionada
+          {" · "}
+          {recipients.length} correo
+          {recipients.length === 1 ? "" : "s"} manual
+          {" · "}
+          {commsMsg.length}/{COMMS_MAX}
+        </div>
+      </div>
+
+      <div className="card__footer--right">
+        <button className="btn" onClick={() => setActive(null)}>
+          Volver
+        </button>
       </div>
     </div>
-  );
+  </div>
+);
 
   // ===== Render: Notificaciones (API SQL) =====
   const renderNotificaciones = () => (
