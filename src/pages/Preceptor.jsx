@@ -4,11 +4,8 @@ import "../styles/preceptor.css";
 
 // ===== Data (JSON locales) =====
 import alumnosRaw from "../data/alumnos.json";
-import materiasRaw from "../data/materias.json";
-import califsRaw from "../data/calificaciones.json";
 import justifRaw from "../data/justificaciones.json";
 import docentesRaw from "../data/docentes.json";
-import eventosRaw from "../data/eventos_calendario.json";
 
 // ===== API SQL (preceptor) =====
 import {
@@ -24,6 +21,9 @@ import {
   sendPreceptorComunicado,
   uploadPreceptorAvatar,
   changePreceptorPassword,
+  fetchPreceptorEventosCalendario,
+  createPreceptorEventoCalendario,
+  deletePreceptorEventoCalendario,
 } from "../lib/preceptor.api";
 
 // ===== Constantes / Utils =====
@@ -69,9 +69,6 @@ const capitalizeWords = (str) => {
     .join(" ");
 };
 
-// ===== Storage de eventos creados por el preceptor =====
-const CAL_STORAGE_KEY = "pp4_preceptor_eventos";
-
 export default function Preceptor() {
   const navigate = useNavigate();
 
@@ -96,9 +93,8 @@ export default function Preceptor() {
     }
   }, [avatar]);
 
-  const [active, setActive] = useState(null); // null = Inicio
+  const [active, setActive] = useState(null);
 
-  // Avatar
   const fileRef = useRef(null);
   const choosePhoto = () => fileRef.current?.click();
 
@@ -166,52 +162,52 @@ export default function Preceptor() {
     loadProfile();
   }, []);
 
-  // Cambio de contraseña (API real)
-const [showPwd, setShowPwd] = useState(false);
-const [currentPwd, setCurrentPwd] = useState("");
-const [pwd1, setPwd1] = useState("");
-const [pwd2, setPwd2] = useState("");
-const [pwdLoading, setPwdLoading] = useState(false);
+  // Cambio de contraseña
+  const [showPwd, setShowPwd] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState("");
+  const [pwd1, setPwd1] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
 
-const savePassword = async (e) => {
-  e.preventDefault();
+  const savePassword = async (e) => {
+    e.preventDefault();
 
-  if (!currentPwd.trim()) {
-    alert("Ingresá tu contraseña actual.");
-    return;
-  }
+    if (!currentPwd.trim()) {
+      alert("Ingresá tu contraseña actual.");
+      return;
+    }
 
-  if (pwd1.length < 8) {
-    alert("La nueva contraseña debe tener al menos 8 caracteres.");
-    return;
-  }
+    if (pwd1.length < 8) {
+      alert("La nueva contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
 
-  if (pwd1 !== pwd2) {
-    alert("Las contraseñas no coinciden.");
-    return;
-  }
+    if (pwd1 !== pwd2) {
+      alert("Las contraseñas no coinciden.");
+      return;
+    }
 
-  setPwdLoading(true);
-  const result = await changePreceptorPassword({
-    currentPassword: currentPwd,
-    newPassword: pwd1,
-    confirmPassword: pwd2,
-  });
-  setPwdLoading(false);
+    setPwdLoading(true);
+    const result = await changePreceptorPassword({
+      currentPassword: currentPwd,
+      newPassword: pwd1,
+      confirmPassword: pwd2,
+    });
+    setPwdLoading(false);
 
-  if (!result.ok) {
-    alert(result.error || "No se pudo cambiar la contraseña.");
-    return;
-  }
+    if (!result.ok) {
+      alert(result.error || "No se pudo cambiar la contraseña.");
+      return;
+    }
 
-  alert("Contraseña actualizada correctamente.");
-  setShowPwd(false);
-  setCurrentPwd("");
-  setPwd1("");
-  setPwd2("");
-};
+    alert("Contraseña actualizada correctamente.");
+    setShowPwd(false);
+    setCurrentPwd("");
+    setPwd1("");
+    setPwd2("");
+  };
 
-  // ===== Índices / Comisiones (JSON, usados en otros paneles todavía) =====
+  // ===== Índices / Comisiones (JSON que siguen usando otros paneles) =====
   const alumnosById = useMemo(
     () => Object.fromEntries(alumnosRaw.map((a) => [a.id, a])),
     []
@@ -224,37 +220,16 @@ const savePassword = async (e) => {
     []
   );
 
-  const comisionesLocal = useMemo(
-    () =>
-      materiasRaw.map((m) => ({
-        id: `${m.id}_${m.comision}`,
-        materiaId: m.id,
-        comision: m.comision,
-        nombreMateria: m.nombre,
-        docenteId: m.docenteId,
-        horario: m.horario,
-        sede: m.sede ?? "Central",
-        aula: m.aula ?? "A confirmar",
-        estado: m.estado ?? "En curso",
-      })),
-    []
-  );
-  const comisionesOptions = useMemo(
-    () => comisionesLocal.map((c) => c.id),
-    [comisionesLocal]
-  );
-
   // ===== Comisiones desde la API (SQL) =====
   const [comisionesDb, setComisionesDb] = useState([]);
   const [loadingComs, setLoadingComs] = useState(true);
   const [errComs, setErrComs] = useState(null);
 
-  // ===== Métricas de alumnos desde la API (SQL) =====
+  // ===== Métricas de alumnos (SQL) =====
   const [alumnosMetrics, setAlumnosMetrics] = useState([]);
   const [loadingAlumnos, setLoadingAlumnos] = useState(true);
   const [errAlumnos, setErrAlumnos] = useState(null);
 
-  // Opciones de comisiones desde datos SQL (para filtros del panel Alumnos)
   const comisionesDbOptions = useMemo(() => {
     const s = new Set();
     comisionesDb.forEach((c) => {
@@ -277,7 +252,17 @@ const savePassword = async (e) => {
     [comisionesDb]
   );
 
-  // Carga de comisiones SQL
+  const comisionesCalOptions = useMemo(
+    () =>
+      (comisionesDb || []).map((c) => ({
+        value: Number(c.id),
+        label: `${c.comision ?? "-"} — ${capitalizeWords(
+          c.materia?.nombre ?? "-"
+        )}`,
+      })),
+    [comisionesDb]
+  );
+
   useEffect(() => {
     (async () => {
       try {
@@ -294,7 +279,6 @@ const savePassword = async (e) => {
     })();
   }, []);
 
-  // Carga de métricas de alumnos SQL
   useEffect(() => {
     (async () => {
       try {
@@ -311,7 +295,7 @@ const savePassword = async (e) => {
     })();
   }, []);
 
-  // ===== Asistencias (API SQL) =====
+  // ===== Asistencias (SQL) =====
   const todayISO = useMemo(() => ymd(new Date()), []);
 
   const [comisionSel, setComisionSel] = useState("");
@@ -440,17 +424,6 @@ const savePassword = async (e) => {
     }
   };
 
-  // Alumnos por comisión (desde calificaciones JSON, usado en Comunicaciones)
-  const alumnosDeComision = useMemo(() => {
-    const map = new Map();
-    for (const r of califsRaw) {
-      const key = `${r.materiaId}_${r.comision}`;
-      if (!map.has(key)) map.set(key, new Set());
-      map.get(key).add(r.alumnoId);
-    }
-    return map;
-  }, []);
-
   // ===== Justificaciones (LS + JSON) =====
   const JUSTI_STORAGE_KEY = "pp4_preceptor_justificaciones";
 
@@ -486,7 +459,7 @@ const savePassword = async (e) => {
     return overlay.filter((j) => j.estado === "pendiente").length;
   }, [justifDb, jfDraft]);
 
-  // ===== Calendario =====
+  // ===== Calendario (SQL) =====
   const today = new Date();
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
@@ -515,37 +488,44 @@ const savePassword = async (e) => {
     "Sábado",
   ];
 
-  const [eventosUser, setEventosUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(CAL_STORAGE_KEY) || "[]");
-    } catch {
-      return [];
-    }
-  });
-  useEffect(
-    () => localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(eventosUser)),
-    [eventosUser]
-  );
+  const [eventosCal, setEventosCal] = useState([]);
+  const [loadingEventos, setLoadingEventos] = useState(true);
+  const [errEventos, setErrEventos] = useState(null);
 
-  const allEventos = useMemo(
-    () => [...(eventosRaw || []), ...eventosUser],
-    [eventosUser]
-  );
+  useEffect(() => {
+    const loadEventos = async () => {
+      try {
+        setLoadingEventos(true);
+        setErrEventos(null);
+        const data = await fetchPreceptorEventosCalendario();
+        setEventosCal(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("fetchPreceptorEventosCalendario error", e);
+        setErrEventos("No se pudieron cargar los eventos.");
+        setEventosCal([]);
+      } finally {
+        setLoadingEventos(false);
+      }
+    };
+    loadEventos();
+  }, []);
 
   const eventosMes = useMemo(
     () =>
-      (allEventos || []).filter((e) =>
-        e.fecha.startsWith(`${calYear}-${pad2(calMonth + 1)}`)
+      (eventosCal || []).filter(
+        (e) =>
+          e.fecha &&
+          e.fecha.startsWith(`${calYear}-${pad2(calMonth + 1)}`)
       ),
-    [allEventos, calYear, calMonth]
+    [eventosCal, calYear, calMonth]
   );
 
   const eventosPorDia = useMemo(() => {
     const m = new Map();
     for (const e of eventosMes) {
-      const d = Number(e.fecha.slice(-2));
-      if (!m.has(d)) m.set(d, []);
-      m.get(d).push(e);
+      const dia = Number(e.fecha.slice(-2));
+      if (!m.has(dia)) m.set(dia, []);
+      m.get(dia).push(e);
     }
     return m;
   }, [eventosMes]);
@@ -566,107 +546,156 @@ const savePassword = async (e) => {
       today.getFullYear(),
       today.getFullYear() + 1,
     ]);
-    (allEventos || []).forEach((e) => base.add(Number(e.fecha.slice(0, 4))));
+    (eventosCal || []).forEach((e) => {
+      if (e.fecha && /^\d{4}-\d{2}-\d{2}$/.test(e.fecha)) {
+        base.add(Number(e.fecha.slice(0, 4)));
+      }
+    });
     return Array.from(base).sort((a, b) => a - b);
-  }, [today, allEventos]);
+  }, [today, eventosCal]);
 
   const proximosEventos = useMemo(() => {
     const start = todayISO;
     const endDate = new Date(todayISO);
     endDate.setDate(endDate.getDate() + 21);
     const end = ymd(endDate);
-    return (allEventos || [])
-      .filter((e) => e.fecha >= start && e.fecha <= end)
+
+    return (eventosCal || [])
+      .filter((e) => e.fecha && e.fecha >= start && e.fecha <= end)
       .sort((a, b) => a.fecha.localeCompare(b.fecha))
       .slice(0, 6);
-  }, [todayISO, allEventos]);
+  }, [todayISO, eventosCal]);
 
-  // === Modal de alta/edición de eventos ===
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("add");
   const emptyDraft = useMemo(
     () => ({
       id: null,
       fecha: todayISO,
-      comision: comisionesOptions[0] || "",
+      comisionId: comisionesCalOptions[0]?.value ?? "",
       titulo: "",
-      user: true,
+      esInstitucional: false,
     }),
-    [todayISO, comisionesOptions]
+    [todayISO, comisionesCalOptions]
   );
   const [draft, setDraft] = useState(emptyDraft);
+
   useEffect(() => {
     if (!isModalOpen) setDraft(emptyDraft);
   }, [isModalOpen, emptyDraft]);
 
+  const hasComisionesForEvents = comisionesCalOptions.length > 0;
+
   const openAddModal = (isoDate) => {
+    const firstComision = comisionesCalOptions[0]?.value ?? "";
     setModalMode("add");
     setDraft({
       id: null,
       fecha: isoDate || todayISO,
-      comision: comisionesOptions[0] || "",
+      comisionId: firstComision,
       titulo: "",
-      user: true,
+      esInstitucional: false,
     });
     setIsModalOpen(true);
   };
 
   const openEditModal = (ev) => {
-    if (ev.user) {
-      setModalMode("edit");
-      setDraft({
-        id: ev.id,
-        fecha: ev.fecha,
-        comision: ev.comision,
-        titulo: ev.titulo,
-        user: true,
-      });
-    } else {
-      setModalMode("view");
-      setDraft({
-        id: ev.id ?? null,
-        fecha: ev.fecha,
-        comision: ev.comision,
-        titulo: ev.titulo,
-        user: false,
-      });
-    }
+    const esInstitucional =
+      ev.esInstitucional === true || ev.comisionId == null;
+
+    setModalMode(esInstitucional ? "view" : "edit");
+    setDraft({
+      id: ev.id,
+      fecha: ev.fecha,
+      comisionId: ev.comisionId ?? "",
+      titulo: ev.titulo ?? "",
+      esInstitucional,
+    });
     setIsModalOpen(true);
   };
 
-  const saveDraft = () => {
-    if (!draft.titulo.trim()) return alert("Ingresá un título.");
-    if (!draft.fecha) return alert("Elegí una fecha.");
-    if (!draft.comision) return alert("Elegí una comisión.");
-    if (!comisionesOptions.includes(draft.comision))
-      return alert("La comisión seleccionada no es válida.");
-    if (modalMode === "add") {
-      const nuevo = { ...draft, id: Date.now(), user: true };
-      setEventosUser((prev) => [...prev, nuevo]);
-    } else if (modalMode === "edit") {
-      setEventosUser((prev) =>
-        prev.map((e) =>
-          e.id === draft.id
-            ? {
-                ...e,
-                fecha: draft.fecha,
-                comision: draft.comision,
-                titulo: draft.titulo,
-              }
-            : e
-        )
-      );
+  const handleAddAnother = () => {
+    const fecha = draft.fecha || todayISO;
+    const firstComision = comisionesCalOptions[0]?.value ?? "";
+    const comisionId =
+      draft.comisionId &&
+      comisionesCalOptions.some((opt) => opt.value === draft.comisionId)
+        ? draft.comisionId
+        : firstComision;
+
+    setModalMode("add");
+    setDraft({
+      id: null,
+      fecha,
+      comisionId,
+      titulo: "",
+      esInstitucional: false,
+    });
+  };
+
+  const saveDraft = async () => {
+    if (!draft.titulo.trim()) {
+      alert("Ingresá un título.");
+      return;
     }
+    if (!draft.fecha) {
+      alert("Elegí una fecha.");
+      return;
+    }
+    if (!draft.comisionId) {
+      alert("Elegí una comisión.");
+      return;
+    }
+
+    const payload = {
+      fecha: draft.fecha,
+      titulo: draft.titulo.trim(),
+      comisionId: Number(draft.comisionId),
+    };
+
+    try {
+      const result = await createPreceptorEventoCalendario(payload);
+      if (!result?.ok) {
+        alert(result?.error || "No se pudo crear el evento.");
+        return;
+      }
+
+      const nuevo = result.data;
+      if (nuevo) {
+        setEventosCal((prev) => [...prev, nuevo]);
+      }
+
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error("saveDraft error", err);
+      alert("Ocurrió un error al crear el evento.");
+    }
+  };
+
+  const deleteDraft = async () => {
+    if (!draft.id) return;
+
+    const okConfirm = window.confirm(
+      "¿Seguro que querés eliminar este evento?"
+    );
+    if (!okConfirm) return;
+
+    const id = draft.id;
+    const prev = eventosCal;
+
+    setEventosCal((p) => p.filter((ev) => ev.id !== id));
+
+    const ok = await deletePreceptorEventoCalendario(id);
+    if (!ok) {
+      alert("No se pudo eliminar el evento en el servidor.");
+      setEventosCal(prev);
+      return;
+    }
+
     setIsModalOpen(false);
   };
 
-  const deleteDraft = () => {
-    if (modalMode !== "edit") return;
-    setEventosUser((prev) => prev.filter((e) => e.id !== draft.id));
-    setIsModalOpen(false);
-  };
-
-  // ===== Comunicaciones (SQL + emails) =====
+  // ===== Comunicaciones =====
   const [commsSubject, setCommsSubject] = useState("");
   const [commsComSel, setCommsComSel] = useState("");
   const [commsComs, setCommsComs] = useState([]);
@@ -756,7 +785,7 @@ const savePassword = async (e) => {
     setCommsComs([]);
   };
 
-  // ===== Notificaciones (API SQL) =====
+  // ===== Notificaciones =====
   const toIso = (d) =>
     /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T09:00:00` : d;
 
@@ -977,7 +1006,10 @@ const savePassword = async (e) => {
                           <tr key={`${ev.id ?? ev.fecha}-${ev.titulo}`}>
                             <td>{fmtFecha(ev.fecha)}</td>
                             <td>{ev.titulo}</td>
-                            <td>{ev.comision}</td>
+                            <td>
+                              {ev.comisionCodigo ??
+                                (ev.esInstitucional ? "Institucional" : "-")}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -992,7 +1024,7 @@ const savePassword = async (e) => {
     );
   };
 
-  // ===== Render: Mis Comisiones (SQL) =====
+  // ===== Render: Mis Comisiones =====
   const renderMisComisiones = () => {
     const rows =
       comisionesDb && comisionesDb.length > 0
@@ -1065,7 +1097,7 @@ const savePassword = async (e) => {
     );
   };
 
-  // ===== Render: Asistencia (API SQL) =====
+  // ===== Render: Asistencia =====
   const renderAsistencia = () => {
     const hasComisiones = comisionesAsistOptions.length > 0;
 
@@ -1185,7 +1217,7 @@ const savePassword = async (e) => {
     );
   };
 
-  // ===== Render: Justificaciones (JSON) =====
+  // ===== Render: Justificaciones =====
   const renderJustificaciones = () => {
     const norm = (s = "") => s.toString().toLowerCase();
     const tokens = norm(jfQuery).trim().split(" ").filter(Boolean);
@@ -1318,12 +1350,14 @@ const savePassword = async (e) => {
     );
   };
 
-  // ===== Render: Calendario (JSON/LS) =====
+  // ===== Render: Calendario =====
   const renderCalendario = () => {
     const colorFromCommission = (com) => {
       if (!com) return "#555";
       let h = 0;
-      for (let i = 0; i < com.length; i++) h = ((h << 5) - h) + com.charCodeAt(i);
+      for (let i = 0; i < com.length; i++) {
+        h = (h << 5) - h + com.charCodeAt(i);
+      }
       return `hsl(${Math.abs(h) % 360}, 70%, 42%)`;
     };
 
@@ -1366,6 +1400,13 @@ const savePassword = async (e) => {
             </div>
           </div>
 
+          {loadingEventos && (
+            <div className="muted mb-8">Cargando eventos...</div>
+          )}
+          {errEventos && !loadingEventos && (
+            <div className="muted mb-8">{errEventos}</div>
+          )}
+
           <div className="calendar__dow">
             {DOW_ES.map((d) => (
               <div key={d} className="calendar__dow-item">
@@ -1389,8 +1430,14 @@ const savePassword = async (e) => {
                 <div
                   key={`d-${day}`}
                   className="calendar__cell calendar__cell--clickable"
-                  onClick={() => openAddModal(dateISO)}
-                  title="Click para agregar evento"
+                  onClick={() =>
+                    hasComisionesForEvents ? openAddModal(dateISO) : null
+                  }
+                  title={
+                    hasComisionesForEvents
+                      ? "Click para agregar evento"
+                      : "No hay comisiones para agregar eventos"
+                  }
                 >
                   <div className="calendar__day">{day}</div>
                   <div className="calendar__events">
@@ -1399,9 +1446,11 @@ const savePassword = async (e) => {
                         key={`${ev.id ?? "r"}-${i}`}
                         className="calendar__pill calendar__pill--clickable"
                         style={{
-                          background: colorFromCommission(ev.comision),
+                          background: colorFromCommission(ev.comisionCodigo),
                         }}
-                        title={`${ev.titulo} — ${ev.comision}`}
+                        title={`${ev.titulo} — ${
+                          ev.comisionCodigo || "Institucional"
+                        }`}
                         onClick={(e) => {
                           e.stopPropagation();
                           openEditModal(ev);
@@ -1411,7 +1460,7 @@ const savePassword = async (e) => {
                           {ev.titulo}
                         </div>
                         <div className="calendar__pill-sub">
-                          {ev.comision}
+                          {ev.comisionCodigo || "Institucional"}
                         </div>
                       </div>
                     ))}
@@ -1431,8 +1480,8 @@ const savePassword = async (e) => {
                   {modalMode === "add"
                     ? "Agregar evento"
                     : modalMode === "edit"
-                    ? "Editar evento"
-                    : "Detalle de evento"}
+                    ? "Detalle de evento de comisión"
+                    : "Detalle de evento institucional"}
                 </h3>
 
                 <div className="form-row">
@@ -1447,7 +1496,7 @@ const savePassword = async (e) => {
                         fecha: e.target.value,
                       })
                     }
-                    disabled={modalMode === "view"}
+                    disabled={modalMode !== "add"}
                   />
                 </div>
 
@@ -1455,18 +1504,23 @@ const savePassword = async (e) => {
                   <label className="form-label">Comisión</label>
                   <select
                     className="grades-input"
-                    value={draft.comision}
+                    value={
+                      draft.comisionId ? String(draft.comisionId) : ""
+                    }
                     onChange={(e) =>
                       setDraft({
                         ...draft,
-                        comision: e.target.value,
+                        comisionId: e.target.value
+                          ? Number(e.target.value)
+                          : "",
                       })
                     }
-                    disabled={modalMode === "view"}
+                    disabled={modalMode !== "add"}
                   >
-                    {comisionesOptions.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
+                    <option value="">— seleccionar —</option>
+                    {comisionesCalOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
                       </option>
                     ))}
                   </select>
@@ -1484,7 +1538,7 @@ const savePassword = async (e) => {
                         titulo: e.target.value,
                       })
                     }
-                    disabled={modalMode === "view"}
+                    disabled={modalMode !== "add"}
                   />
                 </div>
 
@@ -1492,20 +1546,38 @@ const savePassword = async (e) => {
                   <button className="btn" onClick={() => setIsModalOpen(false)}>
                     Cerrar
                   </button>
-                  {modalMode === "edit" && (
+
+                  {modalMode !== "add" && !draft.esInstitucional && (
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={handleAddAnother}
+                    >
+                      Agregar otro evento en este día
+                    </button>
+                  )}
+
+                  {modalMode === "edit" && !draft.esInstitucional && (
                     <button className="btn btn--danger" onClick={deleteDraft}>
                       Eliminar
                     </button>
                   )}
-                  {modalMode !== "view" && (
+                  {modalMode === "add" && (
                     <button className="btn btn--success" onClick={saveDraft}>
-                      {modalMode === "add" ? "Agregar" : "Guardar"}
+                      Agregar
                     </button>
                   )}
                 </div>
 
                 {modalMode === "view" && (
-                  <p className="muted mt-16">Evento institucional (no editable).</p>
+                  <p className="muted mt-16">
+                    Evento institucional (no editable).
+                  </p>
+                )}
+                {modalMode === "edit" && (
+                  <p className="muted mt-16">
+                    Evento de comisión (solo se puede eliminar, no editar).
+                  </p>
                 )}
               </div>
             </div>
@@ -1521,9 +1593,9 @@ const savePassword = async (e) => {
     );
   };
 
-  // ===== Render: Alumnos (SQL) =====
+  // ===== Render: Alumnos =====
   const [alumnosQuery, setAlumnosQuery] = useState("");
-  const [groupBy, setGroupBy] = useState("alumno"); // 'alumno' o 'alumno-comision'
+  const [groupBy, setGroupBy] = useState("alumno");
   const [comiFilter, setComiFilter] = useState("todas");
   const [alSort, setAlSort] = useState({
     key: "alumno",
@@ -1836,7 +1908,7 @@ const savePassword = async (e) => {
     );
   };
 
-  // ===== Render: Comunicaciones (SQL) =====
+  // ===== Render: Comunicaciones =====
   const renderComunicaciones = () => (
     <div className="content">
       <div className="enroll-header mb-6">
@@ -1937,7 +2009,7 @@ const savePassword = async (e) => {
     </div>
   );
 
-  // ===== Render: Notificaciones (API SQL) =====
+  // ===== Render: Notificaciones =====
   const renderNotificaciones = () => (
     <div className="notes-wrap">
       <div className="notes-card">
@@ -2075,63 +2147,60 @@ const savePassword = async (e) => {
             <h2 className="profile-name">{displayName}</h2>
             <div className="profile-email">{email}</div>
             {!showPwd ? (
-  <div className="mt-16">
-    <button
-      className="btn btn--danger"
-      onClick={() => setShowPwd(true)}
-    >
-      Cambiar contraseña
-    </button>
-  </div>
-) : (
-  <form
-    className="pwd-form"
-    onSubmit={savePassword}
-  >
-    <input
-      type="password"
-      className="grades-input"
-      placeholder="Contraseña actual"
-      value={currentPwd}
-      onChange={(e) => setCurrentPwd(e.target.value)}
-    />
-    <input
-      type="password"
-      className="grades-input"
-      placeholder="Nueva contraseña"
-      value={pwd1}
-      onChange={(e) => setPwd1(e.target.value)}
-    />
-    <input
-      type="password"
-      className="grades-input"
-      placeholder="Repetir nueva contraseña"
-      value={pwd2}
-      onChange={(e) => setPwd2(e.target.value)}
-    />
-    <div className="row gap-12">
-      <button
-        className="btn btn--success"
-        type="submit"
-        disabled={pwdLoading}
-      >
-        {pwdLoading ? "Guardando..." : "Guardar"}
-      </button>
-      <button
-        className="btn"
-        type="button"
-        onClick={() => {
-          setShowPwd(false);
-          setCurrentPwd("");
-          setPwd1("");
-          setPwd2("");
-        }}
-      >
-        Cancelar
-      </button>
-    </div>
-  </form>
-)}
+              <div className="mt-16">
+                <button
+                  className="btn btn--danger"
+                  onClick={() => setShowPwd(true)}
+                >
+                  Cambiar contraseña
+                </button>
+              </div>
+            ) : (
+              <form className="pwd-form" onSubmit={savePassword}>
+                <input
+                  type="password"
+                  className="grades-input"
+                  placeholder="Contraseña actual"
+                  value={currentPwd}
+                  onChange={(e) => setCurrentPwd(e.target.value)}
+                />
+                <input
+                  type="password"
+                  className="grades-input"
+                  placeholder="Nueva contraseña"
+                  value={pwd1}
+                  onChange={(e) => setPwd1(e.target.value)}
+                />
+                <input
+                  type="password"
+                  className="grades-input"
+                  placeholder="Repetir nueva contraseña"
+                  value={pwd2}
+                  onChange={(e) => setPwd2(e.target.value)}
+                />
+                <div className="row gap-12">
+                  <button
+                    className="btn btn--success"
+                    type="submit"
+                    disabled={pwdLoading}
+                  >
+                    {pwdLoading ? "Guardando..." : "Guardar"}
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => {
+                      setShowPwd(false);
+                      setCurrentPwd("");
+                      setPwd1("");
+                      setPwd2("");
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
           <div className="profile-col profile-col--roles">

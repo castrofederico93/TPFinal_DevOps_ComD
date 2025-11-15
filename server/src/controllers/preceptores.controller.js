@@ -769,3 +769,224 @@ export async function changePreceptorPassword(req, res, next) {
     next(err);
   }
 }
+
+// GET /api/preceptores/me/eventos-calendario
+export async function getPreceptorEventosCalendario(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        e.id AS id,
+        e.fecha AS fecha,
+        e.titulo AS titulo,
+        e.comision_id AS comisionId,
+        c.codigo AS comisionCodigo,
+        m.nombre AS materiaNombre
+      FROM eventos e
+      LEFT JOIN comisiones c ON c.id = e.comision_id
+      LEFT JOIN materias m ON m.id = c.materia_id
+      WHERE
+        e.comision_id IS NULL
+        OR e.comision_id IN (
+          SELECT pc.comision_id
+          FROM preceptor_comision pc
+          WHERE pc.preceptor_id = ${me.id}
+        )
+      ORDER BY e.fecha ASC, e.id ASC;
+    `;
+
+    const out = (rows || []).map((r) => {
+      const idNum = typeof r.id === "bigint" ? Number(r.id) : Number(r.id);
+      const comisionIdNum =
+        r.comisionId == null
+          ? null
+          : typeof r.comisionId === "bigint"
+          ? Number(r.comisionId)
+          : Number(r.comisionId);
+
+      const fechaStr = r.fecha
+        ? formatDateLocal(r.fecha)
+        : null;
+
+      return {
+        id: idNum,
+        fecha: fechaStr,
+        titulo: r.titulo,
+        comisionId: comisionIdNum,
+        comisionCodigo: r.comisionCodigo || null,
+        materiaNombre: r.materiaNombre || null,
+        esInstitucional: comisionIdNum == null,
+      };
+    });
+
+    res.json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/preceptores/me/eventos-calendario
+// body esperado: { fecha: "YYYY-MM-DD", titulo: string, comisionId: number }
+export async function createPreceptorEventoCalendario(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    let { fecha, titulo, comisionId } = req.body || {};
+
+    fecha = String(fecha || "").trim();
+    titulo = String(titulo || "").trim();
+    const comisionIdNum = Number(comisionId);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return res
+        .status(400)
+        .json({ error: "fecha inválida, formato esperado YYYY-MM-DD" });
+    }
+
+    if (!titulo) {
+      return res.status(400).json({ error: "El título es obligatorio." });
+    }
+
+    if (!comisionIdNum || Number.isNaN(comisionIdNum)) {
+      return res.status(400).json({ error: "comisionId inválido." });
+    }
+
+    // Validar que la comisión pertenezca al preceptor actual
+    const vinculo = await prisma.preceptor_comision.findFirst({
+      where: { preceptor_id: me.id, comision_id: comisionIdNum },
+      select: { comision_id: true },
+    });
+
+    if (!vinculo) {
+      return res
+        .status(403)
+        .json({ error: "No estás asignado a esa comisión." });
+    }
+
+    // Como la tabla eventos no tiene AUTO_INCREMENT definido en Prisma,
+    // generamos el próximo id manualmente.
+    const rowsMax = await prisma.$queryRaw`
+      SELECT COALESCE(MAX(id), 0) AS maxId
+      FROM eventos;
+    `;
+
+    const maxRow = Array.isArray(rowsMax) && rowsMax.length > 0
+      ? rowsMax[0]
+      : { maxId: 0 };
+
+    const maxId =
+      typeof maxRow.maxId === "bigint"
+        ? Number(maxRow.maxId)
+        : Number(maxRow.maxId || 0);
+
+    const newId = maxId + 1;
+
+    // Insert directo con SQL para evitar problemas de timezone con Date
+    await prisma.$executeRaw`
+      INSERT INTO eventos (id, fecha, titulo, comision_id)
+      VALUES (${newId}, ${fecha}, ${titulo}, ${comisionIdNum});
+    `;
+
+    // Recuperar el evento recién creado con el mismo shape que el GET
+    const rowsCreated = await prisma.$queryRaw`
+      SELECT
+        e.id AS id,
+        e.fecha AS fecha,
+        e.titulo AS titulo,
+        e.comision_id AS comisionId,
+        c.codigo AS comisionCodigo,
+        m.nombre AS materiaNombre
+      FROM eventos e
+      LEFT JOIN comisiones c ON c.id = e.comision_id
+      LEFT JOIN materias m ON m.id = c.materia_id
+      WHERE e.id = ${newId}
+      LIMIT 1;
+    `;
+
+    if (!rowsCreated || rowsCreated.length === 0) {
+      return res
+        .status(500)
+        .json({ error: "No se pudo recuperar el evento creado." });
+    }
+
+    const r = rowsCreated[0];
+
+    const idNum = typeof r.id === "bigint" ? Number(r.id) : Number(r.id);
+    const comIdOut =
+      r.comisionId == null
+        ? null
+        : typeof r.comisionId === "bigint"
+        ? Number(r.comisionId)
+        : Number(r.comisionId);
+
+    const fechaStr = r.fecha ? formatDateLocal(r.fecha) : null;
+
+    const out = {
+      id: idNum,
+      fecha: fechaStr,
+      titulo: r.titulo,
+      comisionId: comIdOut,
+      comisionCodigo: r.comisionCodigo || null,
+      materiaNombre: r.materiaNombre || null,
+      esInstitucional: comIdOut == null,
+    };
+
+    res.status(201).json(out);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/preceptores/me/eventos-calendario/:id
+export async function deletePreceptorEventoCalendario(req, res, next) {
+  try {
+    const me = await getPreceptorOr404(req, res);
+    if (!me) return;
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ error: "ID inválido" });
+    }
+
+    const evento = await prisma.eventos.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        comision_id: true,
+      },
+    });
+
+    if (!evento) {
+      return res.status(404).json({ error: "Evento no encontrado" });
+    }
+
+    if (evento.comision_id === null) {
+      return res
+        .status(403)
+        .json({ error: "No se pueden eliminar eventos institucionales." });
+    }
+
+    const vinculo = await prisma.preceptor_comision.findFirst({
+      where: {
+        preceptor_id: me.id,
+        comision_id: evento.comision_id,
+      },
+      select: { comision_id: true },
+    });
+
+    if (!vinculo) {
+      return res
+        .status(403)
+        .json({ error: "No autorizado para esta comisión." });
+    }
+
+    await prisma.eventos.delete({ where: { id } });
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}

@@ -209,3 +209,42 @@ export async function changePreceptorPassword(payload) {
     };
   }
 }
+
+// Calendario del preceptor (eventos)
+export async function fetchPreceptorEventosCalendario() {
+  try {
+    const data = await apiGet("/api/preceptores/me/eventos-calendario");
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error("fetchPreceptorEventosCalendario error", err);
+    return [];
+  }
+}
+
+// Crear nuevo evento de calendario para una comisión del preceptor
+// payload: { fecha: "YYYY-MM-DD", titulo: string, comisionId: number }
+export async function createPreceptorEventoCalendario(payload) {
+  try {
+    const data = await apiPost("/api/preceptores/me/eventos-calendario", payload);
+    return { ok: true, data };
+  } catch (err) {
+    console.error("createPreceptorEventoCalendario error", err);
+    return {
+      ok: false,
+      error: err?.message || "No se pudo crear el evento.",
+    };
+  }
+}
+
+export async function deletePreceptorEventoCalendario(id) {
+  if (!id) return false;
+  try {
+    await apiDelete(
+      `/api/preceptores/me/eventos-calendario/${encodeURIComponent(id)}`
+    );
+    return true;
+  } catch (err) {
+    console.error("deletePreceptorEventoCalendario error", err);
+    return false;
+  }
+}

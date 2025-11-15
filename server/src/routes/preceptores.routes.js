@@ -13,7 +13,10 @@ import {
   deletePreceptorNotificacion,
   sendPreceptorComunicacion,
   updatePreceptorAvatar,
-  changePreceptorPassword, // ⬅️ NUEVO
+  changePreceptorPassword,
+  getPreceptorEventosCalendario,
+  createPreceptorEventoCalendario,
+  deletePreceptorEventoCalendario,
 } from "../controllers/preceptores.controller.js";
 
 const router = Router();
@@ -81,12 +84,34 @@ router.post(
   updatePreceptorAvatar
 );
 
-// 🔐 Cambio de contraseña
+// Cambio de contraseña
 router.post(
   "/me/password",
   auth,
   allowRoles("preceptor"),
   changePreceptorPassword
+);
+
+// Calendario (eventos)
+router.get(
+  "/me/eventos-calendario",
+  auth,
+  allowRoles("preceptor"),
+  getPreceptorEventosCalendario
+);
+
+router.post(
+  "/me/eventos-calendario",
+  auth,
+  allowRoles("preceptor"),
+  createPreceptorEventoCalendario
+);
+
+router.delete(
+  "/me/eventos-calendario/:id",
+  auth,
+  allowRoles("preceptor"),
+  deletePreceptorEventoCalendario
 );
 
 export default router;

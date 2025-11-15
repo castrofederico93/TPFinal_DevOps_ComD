@@ -16,14 +16,6 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Current Database: `prisma_app`
---
-
-CREATE DATABASE /*!32312 IF NOT EXISTS*/ `prisma_app` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
-
-USE `prisma_app`;
-
---
 -- Table structure for table `administradores`
 --
 
@@ -78,17 +70,7 @@ CREATE TABLE `alumnos` (
 
 LOCK TABLES `alumnos` WRITE;
 /*!40000 ALTER TABLE `alumnos` DISABLE KEYS */;
-INSERT INTO `alumnos` VALUES
-(1,'sabrina','choque','32328252','1130110713','sabrinaechoque@gmail.com',1),
-(2,'juan','perez','40123456','1145678901','juan.perez@example.com',NULL),
-(3,'ana','gomez','39987654','1145678902','ana.gomez@example.com',NULL),
-(4,'luis','fernandez','38999111','1145678903','luis.fernandez@example.com',NULL),
-(5,'maria','lopez','40111222','1145678904','maria.lopez@example.com',NULL),
-(6,'carla','diaz','42123456','1145678905','carla.diaz@example.com',NULL),
-(7,'diego','ramirez','37999888','1145678906','diego.ramirez@example.com',NULL),
-(8,'valentina','torres','40123999','1145678907','valentina.torres@example.com',NULL),
-(9,'nicolas','sosa','39911222','1145678908','nicolas.sosa@example.com',NULL),
-(10,'laura','martinez','38910001','1145678909','laura.martinez@example.com',NULL);
+INSERT INTO `alumnos` VALUES (1,'sabrina','choque','32328252','1130110713','sabrinaechoque@gmail.com',1),(2,'juan','perez','40123456','1145678901','juan.perez@example.com',NULL),(3,'ana','gomez','39987654','1145678902','ana.gomez@example.com',NULL),(4,'luis','fernandez','38999111','1145678903','luis.fernandez@example.com',NULL),(5,'maria','lopez','40111222','1145678904','maria.lopez@example.com',NULL),(6,'carla','diaz','42123456','1145678905','carla.diaz@example.com',NULL),(7,'diego','ramirez','37999888','1145678906','diego.ramirez@example.com',NULL),(8,'valentina','torres','40123999','1145678907','valentina.torres@example.com',NULL),(9,'nicolas','sosa','39911222','1145678908','nicolas.sosa@example.com',NULL),(10,'laura','martinez','38910001','1145678909','laura.martinez@example.com',NULL);
 /*!40000 ALTER TABLE `alumnos` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -120,27 +102,7 @@ CREATE TABLE `asistencias` (
 
 LOCK TABLES `asistencias` WRITE;
 /*!40000 ALTER TABLE `asistencias` DISABLE KEYS */;
-INSERT INTO `asistencias` VALUES
-(5,'2025-09-18',1,2,'P'),
-(6,'2025-09-18',2,2,'P'),
-(7,'2025-09-18',5,2,'J'),
-(8,'2025-09-18',6,2,'A'),
-(9,'2025-09-17',3,3,'P'),
-(10,'2025-09-17',4,3,'P'),
-(11,'2025-09-19',5,4,'P'),
-(12,'2025-09-19',6,4,'P'),
-(13,'2025-09-19',10,4,'A'),
-(14,'2025-09-16',7,5,'P'),
-(15,'2025-09-16',8,5,'P'),
-(16,'2025-09-16',9,5,'T'),
-(17,'2025-09-20',1,2,'P'),
-(18,'2025-09-20',2,2,'A'),
-(19,'2025-09-20',5,2,'J'),
-(20,'2025-09-20',6,2,'P'),
-(25,'2025-09-19',1,1,'P'),
-(26,'2025-09-19',4,1,'T'),
-(27,'2025-09-19',3,1,'P'),
-(28,'2025-09-19',2,1,'A');
+INSERT INTO `asistencias` VALUES (5,'2025-09-18',1,2,'P'),(6,'2025-09-18',2,2,'P'),(7,'2025-09-18',5,2,'J'),(8,'2025-09-18',6,2,'A'),(9,'2025-09-17',3,3,'P'),(10,'2025-09-17',4,3,'P'),(11,'2025-09-19',5,4,'P'),(12,'2025-09-19',6,4,'P'),(13,'2025-09-19',10,4,'A'),(14,'2025-09-16',7,5,'P'),(15,'2025-09-16',8,5,'P'),(16,'2025-09-16',9,5,'T'),(17,'2025-09-20',1,2,'P'),(18,'2025-09-20',2,2,'A'),(19,'2025-09-20',5,2,'J'),(20,'2025-09-20',6,2,'P'),(25,'2025-09-19',1,1,'P'),(26,'2025-09-19',4,1,'T'),(27,'2025-09-19',3,1,'P'),(28,'2025-09-19',2,1,'A');
 /*!40000 ALTER TABLE `asistencias` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -179,24 +141,7 @@ CREATE TABLE `calificaciones` (
 
 LOCK TABLES `calificaciones` WRITE;
 /*!40000 ALTER TABLE `calificaciones` DISABLE KEYS */;
-INSERT INTO `calificaciones` VALUES
-(1,1,1,8,10,NULL,'En curso','Regular',2025,2,1),
-(2,2,1,7,6,NULL,'En curso',NULL,2025,2,1),
-(3,3,1,9,8,9,'Aprobado',NULL,2025,2,1),
-(4,4,1,5,7,6,'En curso','Rinde recup. p1',2025,2,1),
-(5,5,4,6,6,7,'En curso',NULL,2025,2,1),
-(6,6,4,9,9,NULL,'En curso',NULL,2025,2,1),
-(7,10,4,7,8,8,'Aprobado',NULL,2025,2,1),
-(8,1,2,9,8,10,'Aprobado',NULL,2025,2,2),
-(9,2,2,6,7,NULL,'En curso','Recuperatorio p3',2025,2,2),
-(10,5,2,8,8,9,'Aprobado',NULL,2025,2,2),
-(11,6,2,5,6,6,'En curso',NULL,2025,2,2),
-(12,7,5,7,7,8,'En curso',NULL,2025,2,2),
-(13,8,5,9,9,9,'Aprobado',NULL,2025,2,2),
-(14,9,5,6,6,7,'En curso',NULL,2025,2,2),
-(15,3,3,8,7,8,'Aprobado',NULL,2025,2,1),
-(16,4,3,5,6,6,'En curso',NULL,2025,2,1),
-(17,7,6,6,7,7,'En curso',NULL,2025,2,3);
+INSERT INTO `calificaciones` VALUES (1,1,1,8,10,NULL,'En curso','Regular',2025,2,1),(2,2,1,7,6,NULL,'En curso',NULL,2025,2,1),(3,3,1,9,8,9,'Aprobado',NULL,2025,2,1),(4,4,1,5,7,6,'En curso','Rinde recup. p1',2025,2,1),(5,5,4,6,6,7,'En curso',NULL,2025,2,1),(6,6,4,9,9,NULL,'En curso',NULL,2025,2,1),(7,10,4,7,8,8,'Aprobado',NULL,2025,2,1),(8,1,2,9,8,10,'Aprobado',NULL,2025,2,2),(9,2,2,6,7,NULL,'En curso','Recuperatorio p3',2025,2,2),(10,5,2,8,8,9,'Aprobado',NULL,2025,2,2),(11,6,2,5,6,6,'En curso',NULL,2025,2,2),(12,7,5,7,7,8,'En curso',NULL,2025,2,2),(13,8,5,9,9,9,'Aprobado',NULL,2025,2,2),(14,9,5,6,6,7,'En curso',NULL,2025,2,2),(15,3,3,8,7,8,'Aprobado',NULL,2025,2,1),(16,4,3,5,6,6,'En curso',NULL,2025,2,1),(17,7,6,6,7,7,'En curso',NULL,2025,2,3);
 /*!40000 ALTER TABLE `calificaciones` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -232,13 +177,7 @@ CREATE TABLE `comisiones` (
 
 LOCK TABLES `comisiones` WRITE;
 /*!40000 ALTER TABLE `comisiones` DISABLE KEYS */;
-INSERT INTO `comisiones` VALUES
-(1,'MAT-1_A',1,1,'A','Lunes 19hs',20,'Central','A confirmar'),
-(2,'PROG-1_B',2,2,'B','Miércoles 18hs',30,'Central','A confirmar'),
-(3,'BD-1_C',3,1,'C','Jueves 20hs',25,'Central','A confirmar'),
-(4,'MAT-1_B',1,1,'B','Martes 18hs',25,'Central','A confirmar'),
-(5,'PROG-1_A',2,2,'A','Lunes 20hs',30,'Central','A confirmar'),
-(6,'BD-1_A',3,3,'A','Viernes 19hs',25,'Central','A confirmar');
+INSERT INTO `comisiones` VALUES (1,'MAT-1_A',1,1,'A','Lunes 19hs',20,'Central','A confirmar'),(2,'PROG-1_B',2,2,'B','Miércoles 18hs',30,'Central','A confirmar'),(3,'BD-1_C',3,1,'C','Jueves 20hs',25,'Central','A confirmar'),(4,'MAT-1_B',1,1,'B','Martes 18hs',25,'Central','A confirmar'),(5,'PROG-1_A',2,2,'A','Lunes 20hs',30,'Central','A confirmar'),(6,'BD-1_A',3,3,'A','Viernes 19hs',25,'Central','A confirmar');
 /*!40000 ALTER TABLE `comisiones` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -268,10 +207,7 @@ CREATE TABLE `docentes` (
 
 LOCK TABLES `docentes` WRITE;
 /*!40000 ALTER TABLE `docentes` DISABLE KEYS */;
-INSERT INTO `docentes` VALUES
-(1,'Alejandro','Cubas','1234567890','alejandro.gomez@prisma.edu',2),
-(2,'Betik','Enrique','1132456789','betik.enrique@prisma.edu',NULL),
-(3,'Carolina','Ruiz','1187654321','carolina.ruiz@prisma.edu',NULL);
+INSERT INTO `docentes` VALUES (1,'Alejandro','Cubas','1234567890','alejandro.gomez@prisma.edu',2),(2,'Betik','Enrique','1132456789','betik.enrique@prisma.edu',NULL),(3,'Carolina','Ruiz','1187654321','carolina.ruiz@prisma.edu',NULL);
 /*!40000 ALTER TABLE `docentes` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -299,11 +235,7 @@ CREATE TABLE `eventos` (
 
 LOCK TABLES `eventos` WRITE;
 /*!40000 ALTER TABLE `eventos` DISABLE KEYS */;
-INSERT INTO `eventos` VALUES
-(1,'2025-10-10','Entrega TP 2',NULL),
-(2,'2025-10-20','Primer parcial',NULL),
-(3,'2025-10-06','Reunión de cátedra',NULL),
-(4,'2025-10-27','Entrega Informe',NULL);
+INSERT INTO `eventos` VALUES (1,'2025-10-10','Entrega TP 2',NULL),(2,'2025-10-20','Primer parcial',NULL),(3,'2025-10-06','Reunión de cátedra',NULL),(4,'2025-10-27','Entrega Informe',NULL);
 /*!40000 ALTER TABLE `eventos` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -336,24 +268,7 @@ CREATE TABLE `inscripciones` (
 
 LOCK TABLES `inscripciones` WRITE;
 /*!40000 ALTER TABLE `inscripciones` DISABLE KEYS */;
-INSERT INTO `inscripciones` VALUES
-(1,1,1,'2025-11-14','activa'),
-(2,1,2,'2025-11-14','activa'),
-(3,2,1,'2025-11-14','activa'),
-(4,2,2,'2025-11-14','activa'),
-(5,3,1,'2025-11-14','activa'),
-(6,3,3,'2025-11-14','activa'),
-(7,4,1,'2025-11-14','activa'),
-(8,4,3,'2025-11-14','activa'),
-(9,5,2,'2025-11-14','activa'),
-(10,5,4,'2025-11-14','activa'),
-(11,6,2,'2025-11-14','activa'),
-(12,6,4,'2025-11-14','activa'),
-(13,7,5,'2025-11-14','activa'),
-(14,7,6,'2025-11-14','activa'),
-(15,8,5,'2025-11-14','activa'),
-(16,9,5,'2025-11-14','activa'),
-(17,10,4,'2025-11-14','activa');
+INSERT INTO `inscripciones` VALUES (1,1,1,'2025-11-14','activa'),(2,1,2,'2025-11-14','activa'),(3,2,1,'2025-11-14','activa'),(4,2,2,'2025-11-14','activa'),(5,3,1,'2025-11-14','activa'),(6,3,3,'2025-11-14','activa'),(7,4,1,'2025-11-14','activa'),(8,4,3,'2025-11-14','activa'),(9,5,2,'2025-11-14','activa'),(10,5,4,'2025-11-14','activa'),(11,6,2,'2025-11-14','activa'),(12,6,4,'2025-11-14','activa'),(13,7,5,'2025-11-14','activa'),(14,7,6,'2025-11-14','activa'),(15,8,5,'2025-11-14','activa'),(16,9,5,'2025-11-14','activa'),(17,10,4,'2025-11-14','activa');
 /*!40000 ALTER TABLE `inscripciones` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -383,8 +298,7 @@ CREATE TABLE `instituto` (
 
 LOCK TABLES `instituto` WRITE;
 /*!40000 ALTER TABLE `instituto` DISABLE KEYS */;
-INSERT INTO `instituto` VALUES
-(1,'Instituto Superior Prisma','Av. Siempre Viva 123, CABA','+54 11 5555-0000','secretaria@instituto.edu.ar','soporte@instituto.edu.ar','https://instituto.edu.ar','Lun a Vie 9:00-18:00');
+INSERT INTO `instituto` VALUES (1,'Instituto Superior Prisma','Av. Siempre Viva 123, CABA','+54 11 5555-0000','secretaria@instituto.edu.ar','soporte@instituto.edu.ar','https://instituto.edu.ar','Lun a Vie 9:00-18:00');
 /*!40000 ALTER TABLE `instituto` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -417,12 +331,7 @@ CREATE TABLE `justificaciones` (
 
 LOCK TABLES `justificaciones` WRITE;
 /*!40000 ALTER TABLE `justificaciones` DISABLE KEYS */;
-INSERT INTO `justificaciones` VALUES
-(1001,2,1,'2025-09-19','Turno médico','pendiente','/docs/1001.pdf'),
-(1002,5,2,'2025-09-18','Enfermedad','pendiente','/docs/1002.pdf'),
-(1003,4,3,'2025-09-17','Familiar','aprobada','/docs/1003.pdf'),
-(1004,6,4,'2025-09-19','Trabajo','pendiente','/docs/1004.pdf'),
-(1005,10,4,'2025-09-18','Otro','rechazada','/docs/1005.pdf');
+INSERT INTO `justificaciones` VALUES (1001,2,1,'2025-09-19','Turno médico','pendiente','/docs/1001.pdf'),(1002,5,2,'2025-09-18','Enfermedad','pendiente','/docs/1002.pdf'),(1003,4,3,'2025-09-17','Familiar','aprobada','/docs/1003.pdf'),(1004,6,4,'2025-09-19','Trabajo','pendiente','/docs/1004.pdf'),(1005,10,4,'2025-09-18','Otro','rechazada','/docs/1005.pdf');
 /*!40000 ALTER TABLE `justificaciones` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -448,10 +357,7 @@ CREATE TABLE `materias` (
 
 LOCK TABLES `materias` WRITE;
 /*!40000 ALTER TABLE `materias` DISABLE KEYS */;
-INSERT INTO `materias` VALUES
-(1,'MAT-1','Matemáticas'),
-(2,'PROG-1','Introducción a la Programación'),
-(3,'BD-1','Base de Datos');
+INSERT INTO `materias` VALUES (1,'MAT-1','Matemáticas'),(2,'PROG-1','Introducción a la Programación'),(3,'BD-1','Base de Datos');
 /*!40000 ALTER TABLE `materias` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -485,16 +391,7 @@ CREATE TABLE `notificaciones` (
 
 LOCK TABLES `notificaciones` WRITE;
 /*!40000 ALTER TABLE `notificaciones` DISABLE KEYS */;
-INSERT INTO `notificaciones` VALUES
-(1,'alumno',NULL,'2025-04-24','Calificación final cargada','Se cargó la calificación final en Introducción a la Programación.','calificacion',0,0,NULL),
-(2,'docente',NULL,'2025-04-25','Nueva inscripción en su comisión','El alumno/a Sabrina Choque se inscribió a su cátedra de Modelado (Comisión B).','inscripcion',0,0,NULL),
-(3,'docente',NULL,'2025-04-29','Nueva inscripción','El alumno/a Sabrina Choque se inscribió a Modelado (Comisión B).','inscripcion',0,0,NULL),
-(4,'todos',NULL,'2025-05-01','Mantenimiento del sistema','El sistema estará en mantenimiento el sábado de 00:00 a 02:00.','sistema',0,0,NULL),
-(5,'preceptor',4,'2025-05-03','Nuevas justificaciones pendientes','Hay 3 solicitudes de justificación para revisar.','justificacion',0,0,NULL),
-(6,'preceptor',4,'2025-05-04','Recordatorio de asistencia','Cargar asistencia de PROG-1_B antes de las 22:00.','asistencia',0,0,NULL),
-(8,'alumno',1,'2025-11-15','Asunto de prueba','Este es un mensaje de prueba a ver si se manda a la base de datos. Saludos!','comunicacion',0,0,NULL),
-(9,'alumno',1,'2025-11-15','ASunto 2','mensaje 2','comunicacion',0,0,NULL),
-(10,'alumno',1,'2025-11-14','asunto 3','mensaje 3','comunicacion',0,0,NULL);
+INSERT INTO `notificaciones` VALUES (1,'alumno',NULL,'2025-04-24','Calificación final cargada','Se cargó la calificación final en Introducción a la Programación.','calificacion',0,0,NULL),(2,'docente',NULL,'2025-04-25','Nueva inscripción en su comisión','El alumno/a Sabrina Choque se inscribió a su cátedra de Modelado (Comisión B).','inscripcion',0,0,NULL),(3,'docente',NULL,'2025-04-29','Nueva inscripción','El alumno/a Sabrina Choque se inscribió a Modelado (Comisión B).','inscripcion',0,0,NULL),(4,'todos',NULL,'2025-05-01','Mantenimiento del sistema','El sistema estará en mantenimiento el sábado de 00:00 a 02:00.','sistema',0,0,NULL),(5,'preceptor',4,'2025-05-03','Nuevas justificaciones pendientes','Hay 3 solicitudes de justificación para revisar.','justificacion',0,0,NULL),(6,'preceptor',4,'2025-05-04','Recordatorio de asistencia','Cargar asistencia de PROG-1_B antes de las 22:00.','asistencia',0,0,NULL),(8,'alumno',1,'2025-11-15','Asunto de prueba','Este es un mensaje de prueba a ver si se manda a la base de datos. Saludos!','comunicacion',0,0,NULL),(9,'alumno',1,'2025-11-15','ASunto 2','mensaje 2','comunicacion',0,0,NULL),(10,'alumno',1,'2025-11-14','asunto 3','mensaje 3','comunicacion',0,0,NULL);
 /*!40000 ALTER TABLE `notificaciones` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -521,10 +418,7 @@ CREATE TABLE `preceptor_comision` (
 
 LOCK TABLES `preceptor_comision` WRITE;
 /*!40000 ALTER TABLE `preceptor_comision` DISABLE KEYS */;
-INSERT INTO `preceptor_comision` VALUES
-(1,1),
-(1,2),
-(1,3);
+INSERT INTO `preceptor_comision` VALUES (1,1),(1,2),(1,3);
 /*!40000 ALTER TABLE `preceptor_comision` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -552,8 +446,7 @@ CREATE TABLE `preceptores` (
 
 LOCK TABLES `preceptores` WRITE;
 /*!40000 ALTER TABLE `preceptores` DISABLE KEYS */;
-INSERT INTO `preceptores` VALUES
-(1,'federico','castro',4);
+INSERT INTO `preceptores` VALUES (1,'federico','castro',4);
 /*!40000 ALTER TABLE `preceptores` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -578,11 +471,7 @@ CREATE TABLE `roles` (
 
 LOCK TABLES `roles` WRITE;
 /*!40000 ALTER TABLE `roles` DISABLE KEYS */;
-INSERT INTO `roles` VALUES
-(3,'administrador'),
-(1,'alumno'),
-(2,'docente'),
-(4,'preceptor');
+INSERT INTO `roles` VALUES (3,'administrador'),(1,'alumno'),(2,'docente'),(4,'preceptor');
 /*!40000 ALTER TABLE `roles` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -612,11 +501,7 @@ CREATE TABLE `usuarios` (
 
 LOCK TABLES `usuarios` WRITE;
 /*!40000 ALTER TABLE `usuarios` DISABLE KEYS */;
-INSERT INTO `usuarios` VALUES
-(1,'alumno1','$2a$10$MDZbW8eIrGdC96.3kw5YXOZa3crzpq/sRlbetTE4YfAu9Jdp/k4oa',1,NULL),
-(2,'docente2','$2a$10$KKeSEg/1JCzgyYMXs9auQOcuvyk5SKJYOMTvK2qNVjA7UErwNHmrW',2,NULL),
-(3,'administrativo3','$2a$10$7kL8dvcKvqTzbrtfmXwRNeNXw0kK/UtL.Fn932NLszqHsqNVnieQK',3,NULL),
-(4,'preceptor4','$2a$10$jxYAG6YHtPJ7YkJi7KbHF.mjItce/xem6lt5p4EZ/tNGTFV6e2dbq',4,NULL);
+INSERT INTO `usuarios` VALUES (1,'alumno1','$2a$10$MDZbW8eIrGdC96.3kw5YXOZa3crzpq/sRlbetTE4YfAu9Jdp/k4oa',1,NULL),(2,'docente2','$2a$10$KKeSEg/1JCzgyYMXs9auQOcuvyk5SKJYOMTvK2qNVjA7UErwNHmrW',2,NULL),(3,'administrativo3','$2a$10$7kL8dvcKvqTzbrtfmXwRNeNXw0kK/UtL.Fn932NLszqHsqNVnieQK',3,NULL),(4,'preceptor4','$2a$10$jxYAG6YHtPJ7YkJi7KbHF.mjItce/xem6lt5p4EZ/tNGTFV6e2dbq',4,NULL);
 /*!40000 ALTER TABLE `usuarios` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -633,4 +518,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-15  3:26:08
+-- Dump completed on 2025-11-15 17:32:51
