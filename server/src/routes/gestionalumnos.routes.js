@@ -4,334 +4,352 @@ import prisma from "../db/prisma.js";
 
 const r = Router();
 
-// Aplicamos autenticación y autorización para Administradores y Preceptores
+// Autenticación y autorización
 r.use(auth, allowRoles("administrador", "preceptor"));
+
+// ---------------------------------------------
+// Helpers
+// ---------------------------------------------
+
+// Construye el filtro de alumnos según carrera (materia) y comisión
+function buildAlumnoWhereFromFilters(carrera, comision) {
+  const where = {};
+
+  const hasCarrera = carrera && carrera !== "Todas";
+  const hasComision = comision && comision !== "Todas";
+
+  // Si no hay filtros, devolvemos un where vacío (trae todos los alumnos)
+  if (!hasCarrera && !hasComision) {
+    return where;
+  }
+
+  const someFilter = {
+    estado: "activa", // usa tu enum inscripciones_estado
+  };
+
+  let comisionesFilter = null;
+
+  if (hasCarrera) {
+    comisionesFilter = {
+      ...(comisionesFilter || {}),
+      materias: { nombre: carrera }, // alumnos -> inscripciones -> comisiones -> materias.nombre
+    };
+  }
+
+  if (hasComision) {
+    comisionesFilter = {
+      ...(comisionesFilter || {}),
+      letra: comision, // letra de la comisión
+    };
+  }
+
+  if (comisionesFilter) {
+    someFilter.comisiones = comisionesFilter;
+  }
+
+  where.inscripciones = { some: someFilter };
+  return where;
+}
+
+// Genera un nuevo id para alumnos porque en tu schema no hay autoincrement()
+async function getNextAlumnoId() {
+  const rows = await prisma.$queryRaw`
+    SELECT COALESCE(MAX(id), 0) AS maxId
+    FROM alumnos;
+  `;
+
+  const row =
+    Array.isArray(rows) && rows.length > 0 ? rows[0] : { maxId: 0 };
+
+  const maxId =
+    typeof row.maxId === "bigint"
+      ? Number(row.maxId)
+      : Number(row.maxId || 0);
+
+  return maxId + 1;
+}
 
 // =============================================
 // Rutas CRUD para Alumnos
 // =============================================
 
-// GET /api/gestion/alumnos (LEER todos con el nombre de la materia) 🔎
+// GET /api/gestion/alumnos  (lista con "nombre_materia" derivado)
 r.get("/alumnos", async (_req, res) => {
-    try {
-        const alumnos = await prisma.alumnos.findMany({
-            select: { 
-                id: true, 
-                dni: true, 
-                nombre: true, 
-                apellido: true, 
-                telefono: true, 
-                email: true,
-                materia_id: true, 
-                materia_principal: { 
-                    select: { 
-                        nombre: true 
-                    } 
-                }
+  try {
+    const alumnos = await prisma.alumnos.findMany({
+      select: {
+        id: true,
+        dni: true,
+        nombre: true,
+        apellido: true,
+        telefono: true,
+        email: true,
+        inscripciones: {
+          where: { estado: "activa" },
+          orderBy: { fecha_insc: "asc" },
+          select: {
+            comisiones: {
+              select: {
+                materias: {
+                  select: { id: true, nombre: true },
+                },
+              },
             },
-        });
+          },
+        },
+      },
+    });
 
-        // Mapeo y formateo para que el frontend obtenga "nombre_materia"
-        const alumnosConMateria = alumnos.map(alumno => ({
-            id: alumno.id,
-            dni: alumno.dni,
-            nombre: alumno.nombre,
-            apellido: alumno.apellido,
-            telefono: alumno.telefono,
-            email: alumno.email,
-            materia_id: alumno.materia_id,
-            nombre_materia: alumno.materia_principal?.nombre || 'Sin Asignar', 
-        }));
-        
-        return res.json(alumnosConMateria);
+    const alumnosConMateria = alumnos.map((alumno) => {
+      const primeraInscripcion = alumno.inscripciones[0];
+      const materia =
+        primeraInscripcion?.comisiones?.materias || null;
 
-    } catch (error) {
-        console.error("Error al obtener alumnos:", error);
-        return res.status(500).json({ error: "Error interno del servidor" });
-    }
+      return {
+        id: alumno.id,
+        dni: alumno.dni,
+        nombre: alumno.nombre,
+        apellido: alumno.apellido,
+        telefono: alumno.telefono,
+        email: alumno.email,
+        // Campos que el frontend espera
+        materia_id: materia ? materia.id : null,
+        nombre_materia: materia ? materia.nombre : "Sin Asignar",
+      };
+    });
+
+    return res.json(alumnosConMateria);
+  } catch (error) {
+    console.error("Error al obtener alumnos:", error);
+    return res
+      .status(500)
+      .json({ error: "Error interno del servidor" });
+  }
 });
 
-
-
-// =============================================
-// NUEVA RUTA: GET /api/gestion/alumnos/emails 📧
-// Obtiene solo la lista de emails de los alumnos.
-// =============================================
-r.get("/alumnos/emails", async (req, res) => {
-    const { carrera, comision } = req.query; 
-
-    try {
-        let whereQuery = {};
-        
-        // 1. Filtro por Materia Principal
-        if (carrera && carrera !== 'Todas') {
-            whereQuery.materia_principal = { nombre: carrera };
-        }
-
-        // 2. Filtro por Comisión
-        if (comision && comision !== 'Todas') {
-            whereQuery.inscripciones = {
-                some: { comision: { letra: comision } }
-            };
-        }
-
-        // 3. Consulta a la base de datos para obtener solo los emails
-        const alumnos = await prisma.alumnos.findMany({
-            where: whereQuery, 
-            select: { email: true } // Solo necesitamos el email
-        });
-
-        // 4. Extracción, limpieza y retorno como un array de strings
-        const destinatarios = alumnos
-            .map(a => a.email)
-            .filter(email => email && email.includes('@')); 
-        
-        return res.status(200).json(destinatarios);
-
-    } catch (error) {
-        console.error("Error al obtener emails filtrados:", error);
-        return res.status(500).json({ error: "Error interno del servidor al filtrar emails." });
-    }
-});
-
-// POST /api/gestion/alumnos (CREAR nuevo alumno) ✨
+// POST /api/gestion/alumnos (crear nuevo alumno)
 r.post("/alumnos", async (req, res) => {
-    const { dni, nombre, apellido, telefono, email, materia_id } = req.body;
-    
-    if (!dni || !nombre || !apellido || !materia_id) {
-        return res.status(400).json({ error: "Faltan datos obligatorios." });
-    }
+  const { dni, nombre, apellido, telefono, email } = req.body;
 
-    try {
-        const nuevoAlumno = await prisma.alumnos.create({
-            data: {
-                dni,
-                nombre,
-                apellido,
-                telefono: telefono || null,
-                email: email || null,
-                materia_id: parseInt(materia_id),
-            },
-        });
-        return res.status(201).json(nuevoAlumno);
-    } catch (error) {
-        if (error.code === 'P2002') {
-             return res.status(409).json({ error: "Ya existe un alumno con este DNI." });
-        }
-        if (error.code === 'P2003') {
-            return res.status(400).json({ error: "El ID de la materia seleccionada no es válido." });
-        }
-        console.error("Error al crear alumno:", error);
-        return res.status(500).json({ error: "Error interno al crear el alumno." });
+  if (!dni || !nombre || !apellido) {
+    return res
+      .status(400)
+      .json({ error: "Faltan datos obligatorios." });
+  }
+
+  try {
+    const newId = await getNextAlumnoId();
+
+    const nuevoAlumno = await prisma.alumnos.create({
+      data: {
+        id: newId,
+        dni,
+        nombre,
+        apellido,
+        telefono: telefono || null,
+        email: email || null,
+      },
+    });
+
+    return res.status(201).json({
+      ...nuevoAlumno,
+      materia_id: null,
+    });
+  } catch (error) {
+    if (error.code === "P2002") {
+      return res
+        .status(409)
+        .json({ error: "Ya existe un alumno con este DNI." });
     }
+    console.error("Error al crear alumno:", error);
+    return res
+      .status(500)
+      .json({ error: "Error interno al crear el alumno." });
+  }
 });
 
-// PUT /api/gestion/alumnos/:id (ACTUALIZAR alumno) 🔄
+// PUT /api/gestion/alumnos/:id (actualizar alumno)
 r.put("/alumnos/:id", async (req, res) => {
-    const alumnoId = parseInt(req.params.id);
-    const { dni, nombre, apellido, telefono, email, materia_id } = req.body;
-    
-    if (!materia_id) {
-        return res.status(400).json({ error: "Falta el ID de la materia." });
-    }
+  const alumnoId = parseInt(req.params.id, 10);
+  const { dni, nombre, apellido, telefono, email } = req.body;
 
-    try {
-        const alumnoActualizado = await prisma.alumnos.update({
-            where: { id: alumnoId },
-            data: {
-                dni,
-                nombre,
-                apellido,
-                telefono,
-                email,
-                materia_id: parseInt(materia_id),
-            },
-        });
-        return res.json(alumnoActualizado);
-    } catch (error) {
-        if (error.code === 'P2025') {
-            return res.status(404).json({ error: "Alumno no encontrado para actualizar." });
-        }
-        if (error.code === 'P2003') {
-            return res.status(400).json({ error: "El ID de la materia seleccionada no es válido." });
-        }
-        console.error("Error al actualizar alumno:", error);
-        return res.status(500).json({ error: "Error interno al actualizar el alumno." });
+  try {
+    const alumnoActualizado = await prisma.alumnos.update({
+      where: { id: alumnoId },
+      data: {
+        dni,
+        nombre,
+        apellido,
+        telefono: telefono || null,
+        email: email || null,
+      },
+    });
+
+    return res.json({
+      ...alumnoActualizado,
+      materia_id: null,
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        error: "Alumno no encontrado para actualizar.",
+      });
     }
+    console.error("Error al actualizar alumno:", error);
+    return res.status(500).json({
+      error: "Error interno al actualizar el alumno.",
+    });
+  }
 });
 
-// DELETE /api/gestion/alumnos/:id (ELIMINAR alumno) 🗑️
+// DELETE /api/gestion/alumnos/:id (eliminar alumno)
 r.delete("/alumnos/:id", async (req, res) => {
-    const alumnoId = parseInt(req.params.id);
+  const alumnoId = parseInt(req.params.id, 10);
 
-    try {
-        await prisma.alumnos.delete({
-            where: { id: alumnoId },
-        });
-        return res.status(204).send(); 
-    } catch (error) {
-        if (error.code === 'P2025') {
-            return res.status(404).json({ error: "Alumno no encontrado para eliminar." });
-        }
-        console.error("Error al eliminar alumno:", error);
-        return res.status(500).json({ error: "Error interno al eliminar el alumno." });
+  try {
+    await prisma.alumnos.delete({
+      where: { id: alumnoId },
+    });
+    return res.status(204).send();
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        error: "Alumno no encontrado para eliminar.",
+      });
     }
+    console.error("Error al eliminar alumno:", error);
+    return res.status(500).json({
+      error: "Error interno al eliminar el alumno.",
+    });
+  }
 });
 
 // =============================================
-// RUTAS DE COMUNICACIONES 📧
+// Rutas de comunicaciones / filtros
 // =============================================
 
-// GET /api/gestion/materias (Lista de Carreras/Materias para filtros) 📝
+// GET /api/gestion/materias (lista de materias para filtros)
 r.get("/materias", async (_req, res) => {
-    try {
-        const materias = await prisma.materias.findMany({
-            select: { id: true, nombre: true } 
-        });
-        return res.json(materias);
-    } catch (error) {
-        console.error("Error al obtener materias:", error);
-        return res.status(500).json({ error: "Error interno del servidor al cargar materias." });
-    }
+  try {
+    const materias = await prisma.materias.findMany({
+      select: { id: true, nombre: true },
+    });
+    return res.json(materias);
+  } catch (error) {
+    console.error("Error al obtener materias:", error);
+    return res.status(500).json({
+      error: "Error interno del servidor al cargar materias.",
+    });
+  }
 });
 
-// GET /api/gestion/comisiones/letras (Lista de Comisiones para filtros) 🔠
+// GET /api/gestion/comisiones/letras (lista de letras de comisión)
 r.get("/comisiones/letras", async (_req, res) => {
-    try {
-        // Selecciona todos los valores únicos de la columna 'letra' de las comisiones
-        const letras = await prisma.comisiones.findMany({
-            distinct: ['letra'],
-            select: { letra: true },
-            where: { letra: { not: null, not: "" } },
-            orderBy: { letra: 'asc' }
-        });
-        
-        // El frontend espera la opción "Todas" y luego la lista de letras
-        const comisionesDisponibles = ['Todas', ...letras.map(c => c.letra)];
-        return res.json(comisionesDisponibles);
-    } catch (error) {
-        console.error("Error al obtener letras de comisiones:", error);
-        return res.status(500).json({ error: "Error interno al cargar comisiones." });
-    }
+  try {
+    const letras = await prisma.comisiones.findMany({
+      distinct: ["letra"],
+      select: { letra: true },
+      where: {
+        letra: { not: null, not: "" },
+      },
+      orderBy: { letra: "asc" },
+    });
+
+    const comisionesDisponibles = [
+      "Todas",
+      ...letras.map((c) => c.letra),
+    ];
+    return res.json(comisionesDisponibles);
+  } catch (error) {
+    console.error("Error al obtener letras de comisiones:", error);
+    return res.status(500).json({
+      error: "Error interno al cargar comisiones.",
+    });
+  }
 });
 
-// 💡 NUEVA RUTA: GET /api/gestion/alumnos/emails (Obtiene emails filtrados) 🔎📧
+// GET /api/gestion/alumnos/emails (emails filtrados por carrera/comisión)
 r.get("/alumnos/emails", async (req, res) => {
-    const { carrera, comision } = req.query; // 'carrera' es el nombre de la materia
+  const { carrera, comision } = req.query;
 
-    try {
-        // 1. Construir el filtro de alumnos (Misma lógica que en /comunicado)
-        let whereQuery = {};
-        
-        // Filtro por Materia Principal
-        if (carrera && carrera !== 'Todas') {
-            whereQuery.materia_principal = {
-                nombre: carrera 
-            };
-        }
+  try {
+    const whereQuery = buildAlumnoWhereFromFilters(
+      carrera,
+      comision
+    );
 
-        // Filtro por Letra de Comisión (a través de 'inscripciones')
-        // NOTA: Si la relación directa existe en la tabla alumnos, usa 'comision_asociada: { letra: comision }'
-        // Si no existe esa relación directa, la siguiente lógica de 'inscripciones' es correcta.
-        if (comision && comision !== 'Todas') {
-            whereQuery.inscripciones = {
-                some: { 
-                    comision: {
-                        letra: comision
-                    }
-                }
-            };
-        }
+    const alumnos = await prisma.alumnos.findMany({
+      where: whereQuery,
+      select: { email: true },
+    });
 
-        // 2. Obtener los emails de los alumnos que cumplen el filtro
-        const alumnos = await prisma.alumnos.findMany({
-            where: whereQuery, 
-            select: {
-                email: true,
-            }
-        });
+    const destinatarios = alumnos
+      .map((a) => a.email)
+      .filter((email) => email && email.includes("@"));
 
-        // 3. Extraer y limpiar la lista de emails
-        const destinatarios = alumnos
-            .map(a => a.email)
-            .filter(email => email && email.includes('@')); 
-        
-        // 4. Devolver la lista de emails al frontend
-        // El frontend espera un array de strings (emails)
-        return res.status(200).json(destinatarios);
-
-    } catch (error) {
-        console.error("Error al obtener emails filtrados:", error);
-        return res.status(500).json({ error: "Error interno del servidor al filtrar emails." });
-    }
+    return res.status(200).json(destinatarios);
+  } catch (error) {
+    console.error("Error al obtener emails filtrados:", error);
+    return res.status(500).json({
+      error:
+        "Error interno del servidor al filtrar emails.",
+    });
+  }
 });
 
-
-// POST /api/gestion/comunicado (Lógica de Envío de Email) 📨
+// POST /api/gestion/comunicado (simulación de envío de comunicado)
 r.post("/comunicado", async (req, res) => {
-    const { carrera, comision, mensaje, titulo } = req.body; // 'carrera' es el nombre de la materia
+  const { carrera, comision, mensaje, titulo } = req.body;
 
-    if (!mensaje || !titulo) {
-        return res.status(400).json({ error: "Falta el título o el contenido del mensaje." });
+  if (!mensaje || !titulo) {
+    return res.status(400).json({
+      error: "Falta el título o el contenido del mensaje.",
+    });
+  }
+
+  try {
+    const whereQuery = buildAlumnoWhereFromFilters(
+      carrera,
+      comision
+    );
+
+    const alumnos = await prisma.alumnos.findMany({
+      where: whereQuery,
+      select: {
+        email: true,
+        nombre: true,
+        apellido: true,
+      },
+    });
+
+    const destinatarios = alumnos
+      .map((a) => a.email)
+      .filter((email) => email && email.includes("@"));
+
+    if (destinatarios.length === 0) {
+      return res.status(404).json({
+        error:
+          "No se encontraron destinatarios con los filtros seleccionados.",
+      });
     }
 
-    try {
-        // 1. Construir el filtro de alumnos
-        let whereQuery = {};
-        
-        // Filtro por Materia Principal
-        if (carrera && carrera !== 'Todas') {
-            whereQuery.materia_principal = {
-                nombre: carrera 
-            };
-        }
+    console.log(
+      `[EMAIL SIMULADO] Título: "${titulo}" | Enviando a ${destinatarios.length} destinatarios: ${destinatarios.join(
+        ", "
+      )}`
+    );
 
-        // Filtro por Letra de Comisión (a través de 'inscripciones')
-        if (comision && comision !== 'Todas') {
-            whereQuery.inscripciones = {
-                some: { 
-                    comision: {
-                        letra: comision
-                    }
-                }
-            };
-        }
-
-        // 2. Obtener los emails de los alumnos
-        const alumnos = await prisma.alumnos.findMany({
-            where: whereQuery, 
-            select: {
-                email: true,
-                nombre: true,
-                apellido: true
-            }
-        });
-
-        // 3. Extraer y limpiar la lista de emails
-        const destinatarios = alumnos
-            .map(a => a.email)
-            .filter(email => email && email.includes('@')); 
-        
-        if (destinatarios.length === 0) {
-            return res.status(404).json({ error: "No se encontraron destinatarios con los filtros seleccionados." });
-        }
-
-        // 4. Lógica de Envío de Email (SIMULACIÓN)
-        console.log(`[EMAIL SIMULADO] Título: "${titulo}" | Enviando a ${destinatarios.length} destinatarios: ${destinatarios.join(', ')}`);
-        
-        // 🚨 IMPORTANTE: Aquí iría la integración real con Nodemailer o tu servicio de envío.
-        
-        return res.status(200).json({
-            mensaje: `Comunicado enviado con éxito a ${destinatarios.length} alumnos.`,
-            destinatarios: destinatarios.length,
-            filtrosUsados: { carrera, comision }
-        });
-
-    } catch (error) {
-        console.error("Error al enviar comunicado:", error);
-        return res.status(500).json({ error: "Error interno al procesar el comunicado." });
-    }
+    return res.status(200).json({
+      mensaje: `Comunicado enviado con éxito a ${destinatarios.length} alumnos.`,
+      destinatarios: destinatarios.length,
+      filtrosUsados: { carrera, comision },
+    });
+  } catch (error) {
+    console.error("Error al enviar comunicado:", error);
+    return res.status(500).json({
+      error: "Error interno al procesar el comunicado.",
+    });
+  }
 });
-
 
 export default r;
