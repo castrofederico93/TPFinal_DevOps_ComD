@@ -1,9 +1,11 @@
+// src/app.js
+
 import express from "express";
 import morgan from "morgan";
 import cors from "cors";
 
 import authRoutes from "./routes/auth.routes.js";
-import alumnosRoutes from "./routes/alumnos.routes.js";
+import alumnosRoutes from "./routes/gestionaralumnos.routes.js"; // 💡 CAMBIO CLAVE: Importamos el archivo correcto
 import docentesRoutes from "./routes/docentes.routes.js";
 import preceptoresRoutes from "./routes/preceptores.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
@@ -28,7 +30,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 // Rutas API
 app.use("/api/auth", authRoutes);
-app.use("/api/alumnos", alumnosRoutes);
+app.use("/api/alumnos", alumnosRoutes); // Aquí usamos el router que contiene /perfil
 app.use("/api/docentes", docentesRoutes);
 app.use("/api/preceptores", preceptoresRoutes);
 app.use("/api/admin", adminRoutes);
