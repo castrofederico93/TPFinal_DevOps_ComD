@@ -949,7 +949,13 @@ export default function Preceptor() {
   ];
 
   const handleLogout = () => {
-    localStorage.clear();
+    const confirmar = window.confirm("¿Seguro que querés cerrar la sesión?");
+
+    if (!confirmar) return;
+
+    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
+
     navigate("/", { replace: true });
   };
 
