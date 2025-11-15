@@ -1,3 +1,5 @@
+// server/prisma/schema.prisma
+
 // Configuración de la base de datos
 datasource db {
   provider = "mysql"
@@ -11,123 +13,137 @@ generator client {
 }
 
 // =========================================================
-//                  MODELOS DE BASE DE DATOS
+//           MODELOS DE BASE DE DATOS
 // =========================================================
 
 model roles {
-  id       Int        @id @default(autoincrement())
-  nombre   String     @db.VarChar(50) @unique
-  usuarios usuarios[]
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(50) @unique
+  usuarios  usuarios[]
 
   @@map("roles")
 }
 
 model usuarios {
-  id            Int           @id @default(autoincrement())
-  username      String        @db.VarChar(50) @unique
-  password_hash String        @db.VarChar(255)
-  rol_id        Int
+  id              Int              @id @default(autoincrement())
+  username        String           @db.VarChar(50) @unique
+  password_hash   String           @db.VarChar(255)
+  rol_id          Int
   
-  rol           roles        @relation(fields: [rol_id], references: [id])
+  rol             roles            @relation(fields: [rol_id], references: [id])
   
-  alumno        alumnos?
-  docente       docentes?
-  preceptor     preceptores?
-  administrador administradores?
-  notificaciones notificaciones[]
+  alumno          alumnos?
+  docente         docentes?
+  preceptor       preceptores?
+  administrador   administradores?
+  notificaciones  notificaciones[]
 
   @@index([rol_id])
   @@map("usuarios")
 }
 
 model alumnos {
-  id           Int            @id
-  nombre       String         @db.VarChar(100)
-  apellido     String         @db.VarChar(100)
-  dni          String?        @db.VarChar(20) @unique
-  telefono     String?        @db.VarChar(30)
-  email        String?        @db.VarChar(120)
-  usuario_id   Int?           @unique
+  id                  Int                 @id
+  nombre              String              @db.VarChar(100)
+  apellido            String              @db.VarChar(100)
+  dni                 String?             @db.VarChar(20) @unique
+  telefono            String?             @db.VarChar(30)
+  email               String?             @db.VarChar(120) // El email es clave para la comunicación
+  usuario_id          Int?                @unique
   
-  usuario      usuarios?      @relation(fields: [usuario_id], references: [id])
-  inscripciones inscripciones[]
-  asistencias  asistencias[]
-  calificaciones calificaciones[]
-  justificaciones justificaciones[]
+  // ✅ CLAVE FORÁNEA: Materia Principal del Alumno
+  materia_id          Int? 
+  
+  usuario             usuarios?           @relation(fields: [usuario_id], references: [id])
+  
+  // ✅ RELACIÓN: Materia Principal (Usada en el filtro de comunicaciones)
+  materia_principal   materias?           @relation("MateriaPrincipal", fields: [materia_id], references: [id])
+  
+  // ✅ RELACIÓN: Inscripciones (Necesaria para el filtro por Comisión)
+  inscripciones       inscripciones[]
+  
+  asistencias         asistencias[]
+  calificaciones      calificaciones[]
+  justificaciones     justificaciones[]
 
   @@index([usuario_id])
+  @@index([materia_id])
   @@map("alumnos")
 }
 
 model docentes {
-  id             Int             @id
-  nombre         String          @db.VarChar(100)
-  apellido       String          @db.VarChar(100)
-  telefono       String?         @db.VarChar(30)
-  email          String?         @db.VarChar(120)
-  usuario_id     Int?            @unique
+  id              Int                 @id
+  nombre          String              @db.VarChar(100)
+  apellido        String              @db.VarChar(100)
+  telefono        String?             @db.VarChar(30)
+  email           String?             @db.VarChar(120)
+  usuario_id      Int?                @unique
   
-  usuario        usuarios?       @relation(fields: [usuario_id], references: [id])
-  comisiones     comisiones[]
-  calificaciones calificaciones[]
+  usuario         usuarios?           @relation(fields: [usuario_id], references: [id])
+  comisiones      comisiones[]
+  calificaciones  calificaciones[]
 
   @@index([usuario_id])
   @@map("docentes")
 }
 
 model preceptores {
-  id             Int             @id
-  nombre         String          @db.VarChar(100)
-  apellido       String          @db.VarChar(100)
-  usuario_id     Int?            @unique
+  id              Int                 @id
+  nombre          String              @db.VarChar(100)
+  apellido        String              @db.VarChar(100)
+  usuario_id      Int?                @unique
   
-  usuario        usuarios?       @relation(fields: [usuario_id], references: [id])
-  comisiones     preceptor_comision[]
+  usuario         usuarios?           @relation(fields: [usuario_id], references: [id])
+  comisiones      preceptor_comision[]
 
   @@index([usuario_id])
   @@map("preceptores")
 }
 
 model administradores {
-  id         Int        @id
-  nombre     String     @db.VarChar(100)
-  usuario_id Int?       @unique
+  id          Int      @id
+  nombre      String   @db.VarChar(100)
+  usuario_id  Int?     @unique
   
-  usuario    usuarios?  @relation(fields: [usuario_id], references: [id])
+  usuario     usuarios? @relation(fields: [usuario_id], references: [id])
 
   @@index([usuario_id])
   @@map("administradores")
 }
 
 model materias {
-  id       Int          @id @default(autoincrement())
-  codigo   String       @db.VarChar(50) @unique
-  nombre   String       @db.VarChar(120)
+  id                  Int          @id @default(autoincrement())
+  codigo              String       @db.VarChar(50) @unique
+  nombre              String       @db.VarChar(120) @unique // El nombre debe ser único para un filtrado preciso
   
-  comisiones comisiones[]
+  comisiones          comisiones[]
+  // ✅ RELACIÓN INVERSA: Usada para buscar alumnos por esta materia principal
+  alumnos_principales alumnos[] @relation("MateriaPrincipal")
 
   @@map("materias")
 }
 
 model comisiones {
-  id             Int              @id @default(autoincrement())
-  codigo         String           @db.VarChar(80) @unique
-  materia_id     Int
-  docente_id     Int?
-  letra          String?          @db.VarChar(10)
-  horario        String?          @db.VarChar(80)
-  cupo           Int?
-  sede           String?          @db.VarChar(80)
-  aula           String?          @db.VarChar(40)
+  id              Int                 @id @default(autoincrement())
+  codigo          String              @db.VarChar(80) @unique
+  materia_id      Int
+  docente_id      Int?
+  letra           String?             @db.VarChar(10) // Letra clave para el filtro de comunicaciones
+  horario         String?             @db.VarChar(80)
+  cupo            Int?
+  sede            String?             @db.VarChar(80)
+  aula            String?             @db.VarChar(40)
   
-  materia        materias         @relation(fields: [materia_id], references: [id])
-  docente        docentes?        @relation(fields: [docente_id], references: [id])
+  materia         materias            @relation(fields: [materia_id], references: [id])
+  docente         docentes?           @relation(fields: [docente_id], references: [id])
   
-  inscripciones inscripciones[]
-  asistencias   asistencias[]
-  calificaciones calificaciones[]
-  eventos       eventos[]
-  preceptores   preceptor_comision[]
+  // ✅ RELACIÓN: Inscripciones (Usada en el filtro de comunicaciones)
+  inscripciones   inscripciones[]
+  
+  asistencias     asistencias[]
+  calificaciones  calificaciones[]
+  eventos         eventos[]
+  preceptores     preceptor_comision[]
   justificaciones justificaciones[] 
 
   @@index([materia_id])
@@ -136,15 +152,15 @@ model comisiones {
 }
 
 model inscripciones {
-  id           Int      @id @default(autoincrement())
-  alumno_id    Int
-  comision_id  Int
-  // 🚨 CORRECCIÓN: Se quitó @db.Date para que MySQL acepte now()
-  fecha_insc   DateTime @default(now())
-  estado       String   @default("activa") @db.VarChar(50)
+  id            Int      @id @default(autoincrement())
+  alumno_id     Int
+  comision_id   Int
+  fecha_insc    DateTime @default(now())
+  estado        String   @default("activa") @db.VarChar(50)
   
-  alumno       alumnos  @relation(fields: [alumno_id], references: [id])
-  comision     comisiones @relation(fields: [comision_id], references: [id])
+  // ✅ RELACIONES: Permiten el JOIN para filtrar alumnos por comisión
+  alumno        alumnos    @relation(fields: [alumno_id], references: [id])
+  comision      comisiones @relation(fields: [comision_id], references: [id])
 
   @@unique([alumno_id, comision_id])
   @@index([alumno_id, comision_id])
@@ -152,14 +168,14 @@ model inscripciones {
 }
 
 model asistencias {
-  id          Int      @id @default(autoincrement())
-  fecha       DateTime @db.Date
-  alumno_id   Int
-  comision_id Int
-  estado      String   @db.VarChar(10)
+  id            Int      @id @default(autoincrement())
+  fecha         DateTime @db.Date // Asumiendo que solo quieres guardar la fecha (YYYY-MM-DD)
+  alumno_id     Int
+  comision_id   Int
+  estado        String   @db.VarChar(10)
   
-  alumno      alumnos  @relation(fields: [alumno_id], references: [id])
-  comision    comisiones @relation(fields: [comision_id], references: [id])
+  alumno        alumnos    @relation(fields: [alumno_id], references: [id])
+  comision      comisiones @relation(fields: [comision_id], references: [id])
 
   @@unique([fecha, alumno_id, comision_id])
   @@index([comision_id, fecha])
@@ -167,21 +183,21 @@ model asistencias {
 }
 
 model calificaciones {
-  id          Int      @id @default(autoincrement())
-  alumno_id   Int
-  comision_id Int
-  p1          Int?     @db.TinyInt
-  p2          Int?     @db.TinyInt
-  p3          Int?     @db.TinyInt
-  estado      String?  @db.VarChar(30)
-  observacion String?  @db.VarChar(255)
-  anio        Int?     @db.SmallInt
-  cuatrimestre Int?    @db.TinyInt
-  docente_id  Int?
+  id            Int      @id @default(autoincrement())
+  alumno_id     Int
+  comision_id   Int
+  p1            Int?     @db.TinyInt
+  p2            Int?     @db.TinyInt
+  p3            Int?     @db.TinyInt
+  estado        String?  @db.VarChar(30)
+  observacion   String?  @db.VarChar(255)
+  anio          Int?     @db.SmallInt
+  cuatrimestre  Int?     @db.TinyInt
+  docente_id    Int?
   
-  alumno      alumnos   @relation(fields: [alumno_id], references: [id])
-  comision    comisiones @relation(fields: [comision_id], references: [id])
-  docente     docentes? @relation(fields: [docente_id], references: [id])
+  alumno        alumnos    @relation(fields: [alumno_id], references: [id])
+  comision      comisiones @relation(fields: [comision_id], references: [id])
+  docente       docentes?  @relation(fields: [docente_id], references: [id])
 
   @@index([alumno_id, comision_id])
   @@index([docente_id])
@@ -197,7 +213,7 @@ model justificaciones {
   estado        String   @default("pendiente") @db.VarChar(50)
   documento_url String?  @db.VarChar(255)
   
-  alumno        alumnos  @relation(fields: [alumno_id], references: [id])
+  alumno        alumnos    @relation(fields: [alumno_id], references: [id])
   comision      comisiones @relation(fields: [comision_id], references: [id])
 
   @@index([comision_id, fecha])
@@ -205,18 +221,18 @@ model justificaciones {
 }
 
 model notificaciones {
-  id         Int      @id
-  destino    String   @db.VarChar(50)
-  usuario_id Int?
-  fecha      DateTime @db.Date
-  titulo     String   @db.VarChar(160)
-  detalle    String?  @db.Text
-  tipo       String?  @db.VarChar(40)
-  leida      Boolean  @default(false)
-  favorito   Boolean  @default(false)
-  link       String?  @db.VarChar(255)
+  id          Int      @id
+  destino     String   @db.VarChar(50)
+  usuario_id  Int?
+  fecha       DateTime @db.Date
+  titulo      String   @db.VarChar(160)
+  detalle     String?  @db.Text
+  tipo        String?  @db.VarChar(40)
+  leida       Boolean  @default(false)
+  favorito    Boolean  @default(false)
+  link        String?  @db.VarChar(255)
 
-  usuario    usuarios? @relation(fields: [usuario_id], references: [id])
+  usuario     usuarios? @relation(fields: [usuario_id], references: [id])
 
   @@index([usuario_id, fecha])
   @@map("notificaciones")
@@ -245,14 +261,14 @@ model preceptor_comision {
 }
 
 model instituto {
-  id                Int      @id @db.TinyInt
-  nombre            String   @db.VarChar(160)
-  direccion         String?  @db.VarChar(160)
-  telefono          String?  @db.VarChar(40)
-  email_secretaria  String?  @db.VarChar(120)
-  email_soporte     String?  @db.VarChar(120)
-  web               String?  @db.VarChar(160)
-  horarios          String?  @db.VarChar(120)
+  id                  Int      @id @db.TinyInt
+  nombre              String   @db.VarChar(160)
+  direccion           String?  @db.VarChar(160)
+  telefono            String?  @db.VarChar(40)
+  email_secretaria    String?  @db.VarChar(120)
+  email_soporte       String?  @db.VarChar(120)
+  web                 String?  @db.VarChar(160)
+  horarios            String?  @db.VarChar(120)
 
   @@map("instituto")
 }
