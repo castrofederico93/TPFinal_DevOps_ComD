@@ -1,140 +1,138 @@
-// src/pages/alumnos/AlumnosRender.jsx
-import React from "react";
-import { useAlumnosData, cap } from "./AlumnosData";
-
-// Importamos todos los paneles
+// src/pages/alumnos/AlumnoRender.jsx
+import React, { useState, useEffect, useRef } from "react";
 import Perfil from "./Perfil";
 import Inscripcion from "./Inscripcion";
-import Calificaciones from "./Calificaciones";
-import Historial from "./Historial";
-import Notificaciones from "./Notificaciones";
-import Asistencias from "./Asistencias";
-import Calendario from "./Calendario";
-import Contacto from "./Contacto";
+import "../../styles/alumnos.css";
 
-export default function AlumnosRender() {
-  // Obtenemos TODO del hook
-  const {
-    active,
-    setActive,
-    alumno,
-    avatarSrc,
-    user,
-    items,
-    handleLogout,
-    // Props para el panel de Perfil
-    ...perfilProps
-  } = useAlumnosData();
+export default function AlumnoRender() {
+  // ===============================
+  // Estado general
+  // ===============================
+  const [active, setActive] = useState("inscripcion"); // panel activo
+  const [alumno, setAlumno] = useState(null);
+  const [avatarSrc, setAvatarSrc] = useState("/alumno.jpg");
+  const [asistenciasData, setAsistenciasData] = useState({
+    asistencias: [],
+    materiaById: {},
+    resumen: { P: 0, A: 0, T: 0, J: 0 },
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const fileRef = useRef(null);
 
   // ===============================
-  // PANEL DINÁMICO GENERAL
+  // Cargar datos del alumno y asistencias desde API
   // ===============================
-  const renderPanel = () => {
-    switch (active) {
-      case "perfil":
-        return <Perfil alumno={alumno} avatarSrc={avatarSrc} {...perfilProps} />;
-      case "inscripcion":
-        return <Inscripcion />;
-      case "calificaciones":
-        return <Calificaciones />;
-      case "historial":
-        return <Historial />;
-      case "notificaciones":
-        return <Notificaciones />;
-      case "asistencias":
-        return <Asistencias />;
-      case "calendario":
-        return <Calendario />;
-      case "contacto":
-        return <Contacto />;
-      default:
-        return (
-          <div className="panel-content">
-            <h2>Panel no encontrado</h2>
-          </div>
-        );
-    }
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    const fetchAlumno = fetch("/api/alumnos/me/datos", {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((res) => res.json());
+
+    const fetchAsistencias = fetch("/api/alumnos/me/asistencias", {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((res) => res.json());
+
+    Promise.all([fetchAlumno, fetchAsistencias])
+      .then(([alumnoData, asistenciasData]) => {
+        setAlumno(alumnoData);
+        setAsistenciasData(asistenciasData);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error cargando datos:", err);
+        setError("No se pudieron cargar los datos");
+        setLoading(false);
+      });
+  }, []);
+
+  // ===============================
+  // Funciones de avatar
+  // ===============================
+  const choosePhoto = () => fileRef.current && fileRef.current.click();
+  const onPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" && setAvatarSrc(reader.result);
+    reader.readAsDataURL(file);
   };
 
   // ===============================
-  // UI GENERAL
+  // Sidebar items
   // ===============================
-  if (!user) {
-    // por si se borra el localStorage en medio de la sesión
-    return (
-      <div className="alumnos-page">
-        <p>Redirigiendo al login...</p>
-      </div>
-    );
-  }
+  const menuItems = [
+    { id: "perfil", label: "Mi Perfil" },
+    { id: "inscripcion", label: "Inscripción a materias" },
+    { id: "asistencias", label: "Asistencias" },
+  ];
+
+  // ===============================
+  // Render panel según activo
+  // ===============================
+  const renderPanel = () => {
+    if (loading) return <p>Cargando datos...</p>;
+    if (error) return <p className="error">{error}</p>;
+
+    switch (active) {
+      case "perfil":
+        return (
+          <Perfil
+            alumno={alumno}
+            avatarSrc={avatarSrc}
+            fileRef={fileRef}
+            choosePhoto={choosePhoto}
+            onPhotoChange={onPhotoChange}
+            showPwd={false}
+            setShowPwd={() => {}}
+            pwd1=""
+            setPwd1={() => {}}
+            pwd2=""
+            setPwd2={() => {}}
+            savePassword={() => {}}
+          />
+        );
+      case "inscripcion":
+        return <Inscripcion />;
+      case "asistencias":
+        return (
+          <div>
+            <h2>Asistencias del alumno</h2>
+            <pre>{JSON.stringify(asistenciasData, null, 2)}</pre>
+            {/* Más adelante aquí podrías usar AsistenciasPanel */}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="alumnos-page">
-      {/* Fondo */}
-      <div className="full-bg">
-        <img src="/prisma.png" alt="Fondo" className="full-bg__image" />
-      </div>
-
       {/* Sidebar */}
       <aside className="sidebar">
-        <div className="sidebar__inner">
-          <div className="sb-profile">
-            <button
-              className="sb-gear"
-              onClick={() => setActive("perfil")}
-              title="Editar perfil"
-            >
-              <img src="/perfil.gif" alt="Editar perfil" />
-            </button>
-
-            <img src={avatarSrc} alt="Alumno" className="sb-avatar" />
-            <p className="sb-role">Alumno/a</p>
-            <p className="sb-name">
-              {alumno ? (
-                <>
-                  {cap(alumno.nombre)} {cap(alumno.apellido)}
-                </>
-              ) : (
-                "Cargando..."
-              )}
-            </p>
-          </div>
-
-          <div className="sb-menu">
-            {items.map((it) => (
-              <button
-                key={it.id}
-                onClick={() => setActive(it.id)}
-                className={
-                  "sb-item" + (active === it.id ? " is-active" : "")
-                }
-              >
-                <span className="sb-item__icon" />
-                <span className="sb-item__text">{it.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="sb-footer">
-            <button className="sb-logout" onClick={handleLogout}>
-              <span>Cerrar sesión</span>
-              <span className="sb-logout-x">×</span>
-            </button>
-          </div>
-        </div>
+        {menuItems.map((it) => (
+          <button
+            key={it.id}
+            className={`sb-item ${active === it.id ? "is-active" : ""}`}
+            onClick={() => setActive(it.id)}
+          >
+            {it.label}
+          </button>
+        ))}
       </aside>
 
       {/* Área principal */}
       <main className="main-area">
-        {/* Marca */}
         <div className="brand">
           <div className="brand__circle">
-            <img src="/Logo.png" alt="Logo Prisma" className="brand__logo" />
+            <img src="/Logo.png" className="brand__logo" />
           </div>
-          <h1 className="brand__title">Instituto Superior Prisma</h1>
+          <h1>Instituto Superior Prisma</h1>
         </div>
 
-        {/* Panel dinámico */}
         {renderPanel()}
       </main>
     </div>

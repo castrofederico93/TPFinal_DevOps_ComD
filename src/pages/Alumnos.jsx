@@ -1,6 +1,7 @@
 // src/pages/Alumnos.jsx
 import React from "react";
 import AlumnosRender from "./alumnos/AlumnosRender";
+import "../styles/alumnos.css";
 
 // Importamos los estilos aquí
 import "../styles/alumnos.css";

@@ -1,21 +1,61 @@
 // src/pages/alumnos/Perfil.jsx
-import React from "react";
-import { cap } from "./AlumnosData"; // Importamos el helper
+import React, { useState, useEffect, useRef } from "react";
 
-export default function Perfil({
-  alumno,
-  avatarSrc,
-  fileRef,
-  choosePhoto,
-  onPhotoChange,
-  showPwd,
-  setShowPwd,
-  pwd1,
-  setPwd1,
-  pwd2,
-  setPwd2,
-  savePassword,
-}) {
+import "../../styles/alumnos.css";
+
+
+
+// Helper para capitalizar
+const cap = (s = "") => s.charAt(0).toUpperCase() + s.slice(1);
+
+export default function Perfil() {
+  const [alumno, setAlumno] = useState(null);
+  const [avatarSrc, setAvatarSrc] = useState("/alumno.jpg");
+  const [showPwd, setShowPwd] = useState(false);
+  const [pwd1, setPwd1] = useState("");
+  const [pwd2, setPwd2] = useState("");
+
+  const fileRef = useRef(null);
+
+  // ===============================
+  // Cargar datos del alumno desde API
+  // ===============================
+  useEffect(() => {
+    fetch("http://localhost:3000/api/alumnos/me/datos")
+      .then(res => res.json())
+      .then(data => {
+        setAlumno(data);
+        if (data.avatar) setAvatarSrc(data.avatar);
+      })
+      .catch(err => console.error("Error al cargar perfil:", err));
+  }, []);
+
+  // ===============================
+  // Handlers
+  // ===============================
+  const choosePhoto = () => fileRef.current?.click();
+
+  const onPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setAvatarSrc(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const savePassword = (e) => {
+    e.preventDefault();
+    if (!pwd1 || !pwd2) return alert("Completá ambos campos.");
+    if (pwd1 !== pwd2) return alert("Las contraseñas no coinciden.");
+    alert("Contraseña actualizada (demo front).");
+    setShowPwd(false);
+    setPwd1("");
+    setPwd2("");
+  };
+
   if (!alumno) {
     return (
       <div className="panel-content">
@@ -31,33 +71,21 @@ export default function Perfil({
       <p className="panel-subtitle">Datos personales del alumno</p>
 
       <div className="perfil-grid">
-        {/* Columna 1: datos básicos */}
+        {/* Datos básicos */}
         <div className="perfil-col">
           <h3>Datos del alumno</h3>
-          <p>
-            <strong>Nombre:</strong> {cap(alumno.nombre)} {cap(alumno.apellido)}
-          </p>
-          <p>
-            <strong>DNI:</strong> {alumno.dni || "—"}
-          </p>
-          <p>
-            <strong>Teléfono:</strong> {alumno.telefono || "—"}
-          </p>
-          <p>
-            <strong>Email:</strong> {alumno.email || "—"}
-          </p>
+          <p><strong>Nombre:</strong> {cap(alumno.nombre)} {cap(alumno.apellido)}</p>
+          <p><strong>DNI:</strong> {alumno.dni || "—"}</p>
+          <p><strong>Teléfono:</strong> {alumno.telefono || "—"}</p>
+          <p><strong>Email:</strong> {alumno.email || "—"}</p>
         </div>
 
-        {/* Columna 2: avatar */}
+        {/* Avatar */}
         <div className="perfil-col">
           <h3>Foto de perfil</h3>
           <img src={avatarSrc} alt="Avatar" className="perfil-avatar" />
           <div className="perfil-avatar-actions">
-            <button
-              type="button"
-              onClick={choosePhoto}
-              className="btn-secondary"
-            >
+            <button type="button" onClick={choosePhoto} className="btn-secondary">
               Cambiar foto
             </button>
             <input
@@ -68,25 +96,17 @@ export default function Perfil({
               onChange={onPhotoChange}
             />
           </div>
-          <p className="hint">
-            (* Por ahora solo cambia en pantalla, a modo de demo)
-          </p>
+          <p className="hint">(* Por ahora solo cambia en pantalla, demo front)</p>
         </div>
 
-        {/* Columna 3: contraseña */}
+        {/* Seguridad / Contraseña */}
         <div className="perfil-col">
           <h3>Seguridad</h3>
-
           {!showPwd && (
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setShowPwd(true)}
-            >
+            <button type="button" className="btn-secondary" onClick={() => setShowPwd(true)}>
               Cambiar contraseña
             </button>
           )}
-
           {showPwd && (
             <form onSubmit={savePassword} className="perfil-pwd-form">
               <label>
@@ -107,18 +127,8 @@ export default function Perfil({
               </label>
 
               <div className="perfil-pwd-actions">
-                <button type="submit" className="btn-primary">
-                  Guardar
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => {
-                    setShowPwd(false);
-                    setPwd1("");
-                    setPwd2("");
-                  }}
-                >
+                <button type="submit" className="btn-primary">Guardar</button>
+                <button type="button" className="btn-secondary" onClick={() => { setShowPwd(false); setPwd1(""); setPwd2(""); }}>
                   Cancelar
                 </button>
               </div>

@@ -3,7 +3,7 @@
 import express from "express";
 import morgan from "morgan";
 import cors from "cors"; 
-import path from "path"; 
+
 
 // 🔹 Importación de Rutas
 
@@ -59,11 +59,9 @@ app.use("/api/preceptores", preceptoresRoutes);
 app.use("/api/admin", adminRoutes);
 
 // 🔹 MONTAJE DE GESTIÓN (CRUD)
-app.use("/api/gestion", alumnosGestiónRoutes); 
 
-// ❌ QUITAR EL MONTAJE DE LAS RUTAS ELIMINADAS:
-// app.use("/api/ofertaAcademica", ofertaAcademicaRoutes); 
-// app.use("/api/constancias", constanciasRoutes); 
+
+
 
 // 🔹 404 API Not Found
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));

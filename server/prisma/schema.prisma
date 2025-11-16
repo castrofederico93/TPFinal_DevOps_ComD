@@ -1,3 +1,4 @@
+// schema.prisma
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -21,15 +22,149 @@ model usuarios {
   rol_id        Int
   rol           roles     @relation(fields: [rol_id], references: [id])
   alumno        alumnos?
+  docente       docentes?
+  preceptor     preceptores?
+  administrador administradores?
 }
 
 model alumnos {
-  id         Int        @id
+  id             Int        @id
+  nombre         String
+  apellido       String
+  dni            String?    @unique
+  telefono       String?
+  email          String?
+  usuario_id     Int?       @unique
+  usuario        usuarios?  @relation(fields: [usuario_id], references: [id])
+  inscripciones  inscripciones[]
+  asistencias    asistencias[]
+  calificaciones calificaciones[]
+  justificaciones justificaciones[]
+}
+
+model docentes {
+  id            Int       @id
+  nombre        String
+  apellido      String
+  telefono      String?
+  email         String?
+  usuario_id    Int?      @unique
+  usuario       usuarios? @relation(fields: [usuario_id], references: [id])
+  comisiones    comisiones[]
+  calificaciones calificaciones[]
+}
+
+model preceptores {
+  id                  Int       @id
+  nombre              String
+  apellido            String
+  usuario_id          Int?      @unique
+  usuario             usuarios? @relation(fields: [usuario_id], references: [id])
+  preceptor_comision   preceptor_comision[]
+}
+
+model administradores {
+  id         Int       @id
   nombre     String
-  apellido   String
-  dni        String?    @unique
-  telefono   String?
-  email      String?
-  usuario_id Int?       @unique
-  usuario    usuarios?  @relation(fields: [usuario_id], references: [id])
+  usuario_id Int?      @unique
+  usuario    usuarios? @relation(fields: [usuario_id], references: [id])
+}
+
+model materias {
+  id        Int        @id @default(autoincrement())
+  codigo    String     @unique
+  nombre    String
+  comisiones comisiones[]
+}
+
+model comisiones {
+  id        Int       @id @default(autoincrement())
+  codigo    String    @unique
+  materia_id Int
+  docente_id Int?
+  letra     String?
+  horario   String?
+  cupo      Int?
+  sede      String?
+  aula      String?
+
+  materia    materias @relation(fields: [materia_id], references: [id])
+  docente    docentes? @relation(fields: [docente_id], references: [id])
+  inscripciones inscripciones[]
+  asistencias   asistencias[]
+  calificaciones calificaciones[]
+  eventos       eventos[]
+  preceptor_comision preceptor_comision[]
+  justificaciones justificaciones[] // ✅ agregado para la relación bidireccional
+}
+
+model inscripciones {
+  id          Int       @id @default(autoincrement())
+  alumno_id   Int
+  comision_id Int
+  fecha_insc  DateTime  @default(now())
+  estado      String    @default("activa")
+
+  alumno      alumnos   @relation(fields: [alumno_id], references: [id])
+  comision    comisiones @relation(fields: [comision_id], references: [id])
+}
+
+model asistencias {
+  id          Int       @id @default(autoincrement())
+  fecha       DateTime
+  alumno_id   Int
+  comision_id Int
+  estado      String
+
+  alumno      alumnos   @relation(fields: [alumno_id], references: [id])
+  comision    comisiones @relation(fields: [comision_id], references: [id])
+}
+
+model calificaciones {
+  id          Int       @id @default(autoincrement())
+  alumno_id   Int
+  comision_id Int
+  p1          Int?
+  p2          Int?
+  p3          Int?
+  estado      String?
+  observacion String?
+  anio        Int?
+  cuatrimestre Int?
+  docente_id  Int?
+
+  alumno      alumnos   @relation(fields: [alumno_id], references: [id])
+  comision    comisiones @relation(fields: [comision_id], references: [id])
+  docente     docentes? @relation(fields: [docente_id], references: [id])
+}
+
+model eventos {
+  id          Int      @id
+  fecha       DateTime
+  titulo      String
+  comision_id Int?
+
+  comision    comisiones? @relation(fields: [comision_id], references: [id])
+}
+
+model justificaciones {
+  id           Int          @id @default(autoincrement())
+  alumno_id    Int
+  alumno       alumnos      @relation(fields: [alumno_id], references: [id])
+  comision_id  Int
+  comision     comisiones   @relation(fields: [comision_id], references: [id])
+  fecha        DateTime
+  motivo       String
+  estado       String?      @default("pendiente")
+  documento_url String?
+}
+
+model preceptor_comision {
+  preceptor_id Int
+  comision_id  Int
+
+  preceptor   preceptores @relation(fields: [preceptor_id], references: [id])
+  comision    comisiones  @relation(fields: [comision_id], references: [id])
+
+  @@id([preceptor_id, comision_id])
 }
