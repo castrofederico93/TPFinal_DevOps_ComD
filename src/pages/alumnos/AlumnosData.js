@@ -1,219 +1,149 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+// src/pages/alumnos/AlumnosData.js
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../../lib/api"; // Asumiendo que apiFetch está en src/lib/api
 
-// *** AJUSTAR: Define cómo obtienes el JWT ***
-const getToken = () => localStorage.getItem('token'); 
-const API_URL = '/api/alumnos/perfil'; // Tu endpoint de Express
+// Helper: capitalizar primera letra
+export const cap = (s = "") => s.charAt(0).toUpperCase() + s.slice(1);
 
-export const useAlumnoState = () => {
-    // =================================================================
-    // 💡 LÓGICA DE CARGA DEL PERFIL (MIGRADO DE JSON A MYSQL)
-    // =================================================================
-    const [alumno, setAlumno] = useState(null);
-    const [loadingPerfil, setLoadingPerfil] = useState(true);
-    const [errorPerfil, setErrorPerfil] = useState(null);
+// Helper para rol
+const canonicalRole = (r = "") => {
+  const v = String(r).toLowerCase();
+  if (v === "administracion" || v === "administrativo") return "administrador";
+  return v;
+};
 
-    useEffect(() => {
-        const token = getToken();
-        if (!token) {
-            setErrorPerfil("Token no encontrado. Inicie sesión.");
-            setLoadingPerfil(false);
-            return;
-        }
+// Menú lateral
+const menuItems = [
+  { id: "perfil", label: "Mi Perfil" },
+  { id: "inscripcion", label: "Inscripción a materias" },
+  { id: "calificaciones", label: "Calificaciones" },
+  { id: "historial", label: "Historial académico" },
+  { id: "notificaciones", label: "Notificaciones" },
+  { id: "asistencias", label: "Asistencias y Justificaciones" },
+  { id: "calendario", label: "Calendario" },
+  { id: "contacto", label: "Contacto" },
+];
 
-        const fetchPerfil = async () => {
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`, // Envío del JWT
-                    },
-                });
+export const useAlumnosData = () => {
+  const navigate = useNavigate();
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Error al cargar perfil.');
-                }
+  // ===============================
+  // ESTADO GENERAL
+  // ===============================
+  const [active, setActive] = useState("perfil");
+  const [alumno, setAlumno] = useState(null);
+  const [avatarSrc, setAvatarSrc] = useState("/alumno.jpg");
 
-                const data = await response.json();
-                
-                // Establecer los datos obtenidos de MySQL
-                setAlumno({
-                    // Asegúrate de que los campos coincidan con lo que devuelve tu backend
-                    id: data.id || 1, 
-                    nombre: data.nombre,
-                    apellido: data.apellido,
-                    email: data.email, 
-                    rol: data.rol
-                });
+  const [showPwd, setShowPwd] = useState(false);
+  const [pwd1, setPwd1] = useState("");
+  const [pwd2, setPwd2] = useState("");
 
-            } catch (err) {
-                console.error("Error al obtener perfil:", err);
-                setErrorPerfil(err.message);
-            } finally {
-                setLoadingPerfil(false);
-            }
-        };
+  const fileRef = useRef(null);
 
-        fetchPerfil();
-    }, []); 
+  // ===============================
+  // AUTENTICACIÓN / DATOS BÁSICOS
+  // ===============================
+  const token = localStorage.getItem("token");
+  const storedRole = localStorage.getItem("role");
+  const username = localStorage.getItem("username");
+  const userRole = canonicalRole(storedRole);
 
-    // =================================================================
-    // ⚙️ PERFIL Y ESTADOS VARIOS
-    // =================================================================
-    const unreadCount = 5;
-    const avatarSrc = "/alumno.jpg";
-    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-    const fileRef = useRef(null);
-    const [showPwd, setShowPwd] = useState(false);
-    const [pwd1, setPwd1] = useState("");
-    const [pwd2, setPwd2] = useState("");
+  const userRaw = localStorage.getItem("user");
+  const user = userRaw ? JSON.parse(userRaw) : null;
 
-    // INSCRIPCIÓN
-    const materiasDisponibles = [];
-    const inscripto = [];
-    const materiaById = (id) => ({ id, nombre: `Materia ${id}` });
-    const showEnrollOk = false;
+  // ===============================
+  // REDIRECCIÓN INICIAL (Solo Token y Rol)
+  // ===============================
+  useEffect(() => {
+    if (!token) {
+      navigate("/", { replace: true });
+    } else if (userRole !== "alumno") {
+      alert(`Acceso denegado: Rol '${userRole}' no autorizado para esta vista.`);
+      navigate("/", { replace: true });
+    }
+  }, [token, userRole, navigate]);
 
-    // =================================================================
-    // ✅ CALIFICACIONES (Corregido)
-    // =================================================================
-    const gradesData = [];
-    const [gradeFilter, setGradeFilter] = useState("");
-    const gradesFiltered = useMemo(() => gradesData, [gradeFilter]);
+  // ===============================
+  // CARGA DE PERFIL DEL ALUMNO (/me/datos)
+  // ===============================
+  useEffect(() => {
+    if (!token || userRole !== "alumno") return;
 
-    // ✅ HISTORIAL (Corregido)
-    const historial = [];
+    apiFetch(`/api/alumnos/me/datos`)
+      .then((data) => {
+        setAlumno(data);
+      })
+      .catch((err) => {
+        console.error("Fallo al cargar perfil:", err);
+        alert("No se pudo cargar el perfil del alumno.");
+      });
+  }, [userRole]);
 
-    // =================================================================
-    // ✅ NOTIFICACIONES (Corregido)
-    // =================================================================
-    const notesData = [];
-    const [notesMode, setNotesMode] = useState("all");
-    const [noteFilter, setNoteFilter] = useState("");
-    const [readSet, setReadSet] = useState(new Set());
-    const [favSet, setFavSet] = useState(new Set());
-    const [expanded, setExpanded] = useState(null);
-    const notesAll = notesData;
+  // ===============================
+  // HANDLERS
+  // ===============================
+  const handleLogout = () => {
+    const ok = window.confirm("¿Seguro que deseas cerrar sesión?");
+    if (!ok) return;
 
-    // ASISTENCIAS
-    const asistencias = [];
-    const resumen = { total: 10, ausentes: 2 };
-    const jusList = [];
-    const [jusForm, setJusForm] = useState({});
-    const ESTADOS = { P: "Presente", A: "Ausente" };
-    const MOTIVOS = { M: "Médico", O: "Otro" };
+    localStorage.clear();
+    navigate("/", { replace: true });
+  };
 
-    // CALENDARIO
-    const eventosData = [];
-    const [calBase, setCalBase] = useState(() => {
-        const d = new Date();
-        d.setDate(1);
-        return d;
-    });
-    const y = calBase.getFullYear();
-    const m = calBase.getMonth();
-    const first = new Date(y, m, 1);
-    const off = (first.getDay() + 6) % 7;
-    const start = new Date(y, m, 1 - off);
-    const eventosPorDia = useMemo(() => {
-        const map = {};
-        (eventosData || []).forEach((e) => {
-            (map[e.fecha] ??= []).push(e);
-        });
-        return map;
-    }, [eventosData]);
+  const choosePhoto = () => {
+    if (fileRef.current) fileRef.current.click();
+  };
 
-    const [diaSel, setDiaSel] = useState(null);
+  const onPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    // CONTACTO
-    const contactoInst = { nombre: "Instituto Superior Prisma", direccion: "Calle Falsa 123" };
-    const docentes = [];
-    const [qContacto, setQContacto] = useState("");
-    const docentesFiltrados = useMemo(() => {
-        const q = qContacto.trim().toLowerCase();
-        if (!q) return docentes;
-        return docentes.filter((d) => {
-            const base = [
-                d.nombre,
-                d.apellido,
-                d.email,
-                d.telefono,
-                ...(d.materiasAsignadas || []).flatMap((m) => [m.nombre, m.comision, m.horario]),
-            ]
-                .filter(Boolean)
-                .map(String)
-                .map((s) => s.toLowerCase());
-            return base.some((s) => s.includes(q));
-        });
-    }, [qContacto, docentes]);
-
-    // =================================================================
-    // RETORNO FINAL
-    // =================================================================
-    return {
-        // PERFIL Y CARGA
-        alumno,
-        loadingPerfil, // Nuevo: para mostrar un spinner
-        errorPerfil,   // Nuevo: para mostrar un error
-        unreadCount,
-        avatarSrc,
-        cap,
-        fileRef,
-        showPwd,
-        setShowPwd,
-        pwd1,
-        setPwd1,
-        pwd2,
-        setPwd2,
-        
-        // INSCRIPCIÓN
-        materiasDisponibles,
-        inscripto,
-        materiaById,
-        showEnrollOk,
-        
-        // CALIFICACIONES (Corregido)
-        gradesFiltered,
-        gradeFilter,
-        setGradeFilter,
-        
-        // HISTORIAL (Corregido)
-        historial,
-        
-        // NOTIFICACIONES (Corregido)
-        notesAll,
-        notesMode,
-        setNotesMode,
-        noteFilter,
-        setNoteFilter,
-        readSet,
-        favSet,
-        expanded,
-        setExpanded,
-        
-        // ASISTENCIAS
-        asistencias,
-        resumen,
-        jusList,
-        jusForm,
-        setJusForm,
-        ESTADOS,
-        MOTIVOS,
-        
-        // CALENDARIO
-        eventosPorDia,
-        calBase,
-        setCalBase,
-        start,
-        m,
-        diaSel,
-        setDiaSel,
-        
-        // CONTACTO
-        contactoInst,
-        docentesFiltrados,
-        qContacto,
-        setQContacto,
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setAvatarSrc(reader.result);
     };
+    reader.readAsDataURL(file);
+  };
+
+  const savePassword = (e) => {
+    e.preventDefault();
+    if (!pwd1 || !pwd2) {
+      alert("Completá ambos campos.");
+      return;
+    }
+    if (pwd1 !== pwd2) {
+      alert("Las contraseñas no coinciden.");
+      return;
+    }
+
+    alert("Contraseña actualizada (demo solo en front).");
+    setShowPwd(false);
+    setPwd1("");
+    setPwd2("");
+  };
+
+  // ===============================
+  // VALORES DEVUELTOS
+  // ===============================
+  return {
+    active,
+    setActive,
+    alumno,
+    avatarSrc,
+    setAvatarSrc,
+    showPwd,
+    setShowPwd,
+    pwd1,
+    setPwd1,
+    pwd2,
+    setPwd2,
+    fileRef,
+    user: { ...user, role: userRole, username },
+    items: menuItems,
+    handleLogout,
+    choosePhoto,
+    onPhotoChange,
+    savePassword,
+  };
 };
