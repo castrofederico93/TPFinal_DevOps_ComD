@@ -5,6 +5,8 @@ import fs from "node:fs";
 
 import prisma from "../db/prisma.js";
 import { auth, allowRoles } from "../middlewares/auth.js";
+import uploadAvatar from "../middlewares/uploadAvatar.js";
+import { updateUserAvatar, changeUserPassword } from "../services/userAccount.service.js";
 
 const r = Router();
 
@@ -342,5 +344,20 @@ r.get("/", allowRoles("administrador", "preceptor"), async (_req, res) => {
     return res.status(500).json({ error: "Error interno del servidor" });
   }
 });
+
+// POST /api/alumnos/me/avatar
+r.post(
+  "/me/avatar",
+  allowRoles("alumno"),
+  uploadAvatar.single("avatar"),
+  updateUserAvatar
+);
+
+// POST /api/alumnos/me/password
+r.post(
+  "/me/password",
+  allowRoles("alumno"),
+  changeUserPassword
+);
 
 export default r;

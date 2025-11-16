@@ -1,4 +1,3 @@
-// src/pages/Alumnos.jsx
 import React, { useState } from "react";
 
 // Componentes
