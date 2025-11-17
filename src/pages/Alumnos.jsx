@@ -116,10 +116,11 @@ import AlumnoInscripcion from "./alumnos/componentes/AlumnoInscripcion.jsx";
 import AlumnoCalificaciones from "./alumnos/componentes/AlumnoCalificaciones.jsx";
 import AlumnoHistorial from "./alumnos/componentes/AlumnoHistorial.jsx";
 import AlumnoNotificaciones from "./alumnos/componentes/AlumnoNotificaciones.jsx";
-import AlumnoAsistencias from "./alumnos/componentes/AlumnoAsistencias.jsx";
-import AlumnoJustificaciones from "./alumnos/componentes/AlumnoJustificaciones.jsx";
 import AlumnoCalendario from "./alumnos/componentes/AlumnoCalendario.jsx";
 import AlumnoContacto from "./alumnos/componentes/AlumnoContacto.jsx";
+
+// ⭐ NUEVO COMPONENTE UNIFICADO
+import AlumnoAsistenciasYJustificaciones from "./alumnos/componentes/AlumnoAsistenciasYJustificaciones.jsx";
 
 export default function Alumnos() {
   const navigate = useNavigate();
@@ -127,13 +128,16 @@ export default function Alumnos() {
 
   const alumnoId = 1;
   const alumno = alumnosData.find((a) => a.id === alumnoId);
-  const nombreCompleto = alumno ? `${alumno.nombre} ${alumno.apellido}` : "Alumno/a";
+  const nombreCompleto =
+    alumno ? `${alumno.nombre} ${alumno.apellido}` : "Alumno/a";
 
   // =================== CONTADOR NOTIFICACIONES =====================
   const unreadCount = useMemo(() => {
     const readRaw = localStorage.getItem(`notes_read_${alumnoId}`) || "[]";
     let readParsed = [];
-    try { readParsed = JSON.parse(readRaw); } catch {}
+    try {
+      readParsed = JSON.parse(readRaw);
+    } catch {}
 
     const readSet = new Set(readParsed);
 
@@ -142,6 +146,7 @@ export default function Alumnos() {
         n.destino === "todos" ||
         (n.destino === "alumno" &&
           (!n.usuarioId || n.usuarioId === alumnoId));
+
       return visible && !readSet.has(n.id);
     }).length;
   }, []);
@@ -166,10 +171,9 @@ export default function Alumnos() {
 
       case "asistencias":
         return (
-          <>
-            <AlumnoAsistencias alumnoId={alumnoId} />
-            <AlumnoJustificaciones alumnoId={alumnoId} />
-          </>
+          <AlumnoAsistenciasYJustificaciones
+            setActive={setActive}
+          />
         );
 
       case "calendario":
@@ -196,7 +200,6 @@ export default function Alumnos() {
 
   return (
     <div className="alumnos-page">
-
       {/* ===================== FONDO ===================== */}
       <div className="full-bg">
         <img src="/prisma.png" className="bg-img" alt="fondo" />
@@ -205,7 +208,6 @@ export default function Alumnos() {
       {/* ===================== SIDEBAR ===================== */}
       <aside className="sidebar">
         <div className="sidebar__inner">
-          
           {/* PERFIL */}
           <div className="sb-profile">
             <button
@@ -254,64 +256,7 @@ export default function Alumnos() {
       </div>
 
       {/* ===================== PANEL CONTENIDO ===================== */}
-      <div className="panel-visor">
-        {renderPanel()}
-      </div>
-
+      <div className="panel-visor">{renderPanel()}</div>
     </div>
   );
 }
-
-const renderPanel = () => {
-  // Casos especiales para vistas anidadas
-  if (active?.view === "justificar") {
-    return (
-      <AlumnoJustificacionForm
-        asistencia={active.asistencia}
-        setActive={setActive}
-      />
-    );
-  }
-
-  switch (active) {
-    case "perfil":
-      return <AlumnoPerfil alumno={alumno} setActive={setActive} />;
-
-    case "inscripcion":
-      return <AlumnoInscripcion />;
-
-    case "calificaciones":
-      return <AlumnoCalificaciones />;
-
-    case "historial":
-      return <AlumnoHistorial setActive={setActive} />;
-
-    case "notificaciones":
-      return <AlumnoNotificaciones alumnoId={alumnoId} setActive={setActive} />;
-
-    case "asistencias":
-      return (
-        <AlumnoAsistencias
-          alumnoId={alumnoId}
-          setActive={setActive}   // <— IMPORTANTE
-        />
-      );
-
-    case "justificaciones":
-      return (
-        <AlumnoJustificaciones
-          alumnoId={alumnoId}
-          setActive={setActive}
-        />
-      );
-
-    case "calendario":
-      return <AlumnoCalendario />;
-
-    case "contacto":
-      return <AlumnoContacto />;
-
-    default:
-      return <AlumnoPerfil alumno={alumno} setActive={setActive} />;
-  }
-};

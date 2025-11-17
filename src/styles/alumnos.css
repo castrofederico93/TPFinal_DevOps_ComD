@@ -1289,3 +1289,97 @@ html, body { overflow-x: clip; overscroll-behavior-x: none; }
   font-style: italic;
 }
 
+/* ================================
+   FORMULARIO DE JUSTIFICACIONES
+   (arreglado + visual como prototipo)
+================================ */
+
+.jus-subtitle {
+  margin: 20px 0 10px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.jus-form {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 10px;
+}
+
+.jus-field {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0;
+}
+
+.jus-field label {
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #fff;
+}
+
+.jus-input,
+.jus-textarea {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #fff;
+  font-size: 14px;
+}
+
+.jus-input:focus,
+.jus-textarea:focus {
+  outline: 2px solid #00AEEF;
+}
+
+.jus-textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.jus-form button.btn {
+  margin-top: 12px;
+  background: #00AEEF;
+  color: #08212c;
+  font-weight: 800;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.jus-form button.btn:hover {
+  filter: brightness(1.1);
+}
+
+.jus-form button.btn:active {
+  transform: translateY(1px);
+}
+
+/* Botón de justificar en la tabla */
+.btn-justificar {
+  background: #00AEEF !important;
+  color: #08212c !important;
+  font-weight: 800;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-justificar:hover {
+  filter: brightness(1.1);
+}
+
+/* Mensajes */
+.jus-form .error {
+  color: salmon;
+  font-weight: 700;
+}
+
+.jus-form .ok {
+  color: lightgreen;
+  font-weight: 700;
+}
