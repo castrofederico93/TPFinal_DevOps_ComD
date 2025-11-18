@@ -114,3 +114,13 @@ export async function sendAlumnoJustificacion(formData) {
     return { ok: false, error: err.message };
   }
 }
+// ----- DOCENTES (contacto) -----
+export async function fetchAlumnoDocentes() {
+  try {
+    const data = await apiGet("/api/alumnos/docentes");
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error("fetchAlumnoDocentes error", err);
+    return [];
+  }
+}

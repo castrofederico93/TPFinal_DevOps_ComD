@@ -1,116 +1,113 @@
-import React, { useEffect, useState } from "react";
-import "../../../styles/alumnos.css";
-import { apiFetch } from "../../../lib/api";
+import React, { useEffect, useState, useMemo } from "react";
+import { fetchAlumnoDocentes } from "../../../lib/alumnos.api";
 
 export default function AlumnoContacto({ setActive }) {
-  const [datos, setDatos] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
-
-  // ================================
-  // Cargar datos de contacto
-  // ================================
-  async function cargarContacto() {
-    try {
-      setLoading(true);
-      const data = await apiFetch("/api/alumnos/contacto");
-      setDatos(data || {});
-    } catch (err) {
-      console.error(err);
-      setMsg("Error al cargar información de contacto.");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [docentes, setDocentes] = useState([]);
+  const [filtro, setFiltro] = useState("");
 
   useEffect(() => {
-    cargarContacto();
+    fetchAlumnoDocentes()
+      .then((data) => {
+        setDocentes(data || []);
+      })
+      .catch((err) => console.error("Error cargando docentes:", err));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="panel-wrap">
-        <h2>Cargando información de contacto...</h2>
-      </div>
-    );
-  }
+  // Filtrar docentes
+  const listaFiltrada = useMemo(() => {
+    const f = filtro.toLowerCase().trim();
+    if (!f) return docentes;
 
-  if (!datos) {
-    return (
-      <div className="panel-wrap">
-        <h2>No se pudo cargar la información.</h2>
-      </div>
+    return docentes.filter((d) =>
+      `${d.nombre} ${d.apellido}`.toLowerCase().includes(f) ||
+      d.email?.toLowerCase().includes(f) ||
+      d.telefono?.includes(f) ||
+      d.materias?.some((m) => m.toLowerCase().includes(f))
     );
-  }
-
-  const instit = datos.instituto;
-  const docentes = datos.docentes || [];
+  }, [filtro, docentes]);
 
   return (
-    <div className="panel-wrap">
+    <div className="contacto-page">
 
-      {/* =============================
-            INFORMACIÓN DEL INSTITUTO
-      ============================== */}
-      <h2 className="profile-title">Contacto del Instituto</h2>
+      {/* HEADER */}
+      <div className="contacto-header">
+        <h2>Contacto</h2>
+        
+      </div>
 
-      <div className="panel-item">
-        <h3>{instit.nombre}</h3>
-        <p><strong>Dirección:</strong> {instit.direccion}</p>
-        <p><strong>Teléfono:</strong> {instit.telefono}</p>
-        <p><strong>Email:</strong> {instit.email}</p>
+      <div className="contacto-grid">
 
-        {instit.web && (
-          <p>
-            <strong>Sitio web:</strong>{" "}
-            <a className="link" href={instit.web} target="_blank">
-              {instit.web}
+        {/* TARJETA INSTITUTO */}
+        <div className="card card-instituto">
+          <h3>Instituto Superior Prisma</h3>
+
+          <p>📍 <strong>Dirección:</strong> Av. Siempre Viva 123, CABA</p>
+          <p>📞 <strong>Teléfono:</strong> +54 11 5555-0000</p>
+
+          <p>📧 <strong>Secretaría:</strong>
+            <a href="mailto:secretaria@instituto.edu.ar"> secretaria@instituto.edu.ar</a>
+          </p>
+
+          <p>🛠 <strong>Soporte:</strong>
+            <a href="mailto:soporte@instituto.edu.ar"> soporte@instituto.edu.ar</a>
+          </p>
+
+          <p>🌐 <strong>Sitio Web:</strong>
+            <a href="https://instituto.edu.ar" target="_blank" rel="noreferrer">
+              https://instituto.edu.ar
             </a>
           </p>
-        )}
+
+          <p>⏰ <strong>Horarios:</strong> Lun a Vie 9:00–18:00</p>
+        </div>
+
+        {/* TARJETA BUSCADOR + DOCENTES */}
+        <div className="card card-docentes">
+
+          <input
+            type="text"
+            className="buscador"
+            placeholder="Buscar por docente, materia, comisión, horario o email..."
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+          />
+
+          <h3>Docentes</h3>
+
+          <div className="tabla-docentes">
+            <table>
+              <thead>
+                <tr>
+                  <th>Docente</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listaFiltrada.map((d) => (
+                  <tr key={d.id}>
+                    <td>{d.nombre} {d.apellido}</td>
+                    <td>
+                      <a href={`mailto:${d.email}`}>{d.email}</a>
+                    </td>
+                    <td>{d.telefono || "-"}</td>
+                  </tr>
+                ))}
+
+                {listaFiltrada.length === 0 && (
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: "center", opacity: 0.6 }}>
+                      No se encontraron docentes.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
       </div>
-
-      {/* =============================
-            DOCENTES
-      ============================== */}
-      <h3 className="section-title">Docentes</h3>
-
-      <div className="panel-list">
-        {docentes.length === 0 ? (
-          <p>No hay docentes registrados.</p>
-        ) : (
-          docentes.map((d) => (
-            <div key={d.id} className="panel-item">
-              <div className="item-header">
-                <h3>{d.nombre}</h3>
-                <span className="badge">{d.materias.length} materias</span>
-              </div>
-
-              <p>
-                <strong>Email:</strong>{" "}
-                <a className="link" href={`mailto:${d.email}`}>
-                  {d.email}
-                </a>
-              </p>
-
-              <p>
-                <strong>Teléfono:</strong> {d.telefono || "No registrado"}
-              </p>
-
-              <p>
-                <strong>Materias:</strong> {d.materias.join(", ")}
-              </p>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* VOLVER */}
-      <button className="btn" onClick={() => setActive(null)}>
-        Volver
-      </button>
-
-      {msg && <p className="msg">{msg}</p>}
     </div>
   );
 }

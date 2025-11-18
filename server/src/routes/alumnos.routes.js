@@ -398,4 +398,68 @@ r.post(
   changeUserPassword
 );
 
+// ====================================================================
+// GET /api/alumnos/docentes
+// Lista de docentes visibles para los alumnos
+// ====================================================================
+r.get("/docentes", async (req, res) => {
+  try {
+    const docentes = await prisma.docentes.findMany({
+      select: {
+        id: true,
+        nombre: true,
+        apellido: true,
+        telefono: true,
+        email: true,
+        comisiones: {
+          select: {
+            materias: {
+              select: { nombre: true }
+            }
+          }
+        }
+      }
+    });
+
+    const lista = docentes.map((d) => ({
+      id: d.id,
+      nombre: d.nombre,
+      apellido: d.apellido,
+      email: d.email,
+      telefono: d.telefono,
+      materias: d.comisiones
+        .map((c) => c.materias?.nombre)
+        .filter(Boolean),
+    }));
+
+    return res.json(lista);
+  } catch (err) {
+    console.error("GET /api/alumnos/docentes error:", err);
+    return res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+// ====================================================================
+// GET /api/alumnos/calendario
+// Eventos del calendario visibles para el alumno
+// ====================================================================
+r.get("/calendario", async (req, res) => {
+  try {
+    const alumno = await prisma.alumnos.findFirst({
+      where: { usuario_id: req.user.sub },
+      select: { id: true },
+    });
+
+    if (!alumno) return res.status(404).json({ error: "Alumno no encontrado" });
+
+    const eventos = await prisma.eventos_calendario.findMany({
+      orderBy: { fecha: "asc" }
+    });
+
+    return res.json(eventos);
+  } catch (err) {
+    console.error("GET /api/alumnos/calendario error:", err);
+    return res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 export default r;

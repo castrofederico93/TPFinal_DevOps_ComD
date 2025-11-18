@@ -77,9 +77,7 @@ export default function AlumnoCalendario({ setActive }) {
         )}
       </div>
 
-      <button className="btn" onClick={() => setActive(null)}>
-        Volver
-      </button>
+      
 
       {msg && <p className="msg">{msg}</p>}
     </div>

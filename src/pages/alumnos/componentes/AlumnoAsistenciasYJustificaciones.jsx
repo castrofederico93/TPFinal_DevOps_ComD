@@ -121,7 +121,7 @@ export default function AlumnoAsistenciasYJustificaciones({ setActive }) {
                 {/* HEADER */}
                 <div className="asis-header">
                     <h2 className="asis-title">Asistencias y Justificaciones</h2>
-                    <button className="btn" onClick={() => setActive(null)}>Volver</button>
+                    
                 </div>
 
                 {/* CONTADORES */}

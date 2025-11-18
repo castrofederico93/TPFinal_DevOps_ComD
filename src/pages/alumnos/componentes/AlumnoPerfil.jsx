@@ -74,9 +74,7 @@ export default function AlumnoPerfil({ setActive }) {
       <div className="profile-card enroll-card">
         <div className="enroll-header">
           <h2 className="enroll-title">Mi Perfil</h2>
-          <button className="btn" onClick={() => setActive(null)}>
-            Volver
-          </button>
+          
         </div>
 
         <div className="profile-grid">
