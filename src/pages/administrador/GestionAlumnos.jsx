@@ -28,6 +28,7 @@ const GestionAlumnos = () => {
         const data = await apiGet("/gestion/materias");
         setMateriasDisponibles(data);
         if (data.length > 0) {
+          // Si hay materias, establece la primera como predeterminada
           setFormData((prev) => ({ ...prev, materia_id: data[0].id }));
         }
       } catch (err) {
@@ -86,6 +87,7 @@ const GestionAlumnos = () => {
       if (materiasDisponibles.length > 0) {
         setFormData((prev) => ({
           ...prev,
+          // Se asegura de que materia_id sea un número para el select
           materia_id: materiasDisponibles[0].id,
         }));
       }
@@ -105,6 +107,7 @@ const GestionAlumnos = () => {
       return;
     }
 
+    // El objeto dataToSend contiene el materia_id, que es crucial para la inscripción
     const dataToSend = {
       dni: formData.dni,
       nombre: formData.nombre,
@@ -116,9 +119,15 @@ const GestionAlumnos = () => {
 
     try {
       if (accionActual === "agregar") {
+        // CLAVE: Se llama a la API. El BACKEND DEBE estar configurado
+        // para, tras crear el alumno, usar materia_id para crear una
+        // entrada en la tabla 'inscripciones' (o asignar la materia/comision
+        // por defecto directamente al alumno).
         await apiPost("/gestion/alumnos", dataToSend);
+        alert("✅ Alumno agregado y registrado en su curso exitosamente.");
       } else {
         await apiPut(`/gestion/alumnos/${alumnoSeleccionado}`, dataToSend);
+        alert("✅ Alumno modificado exitosamente.");
       }
 
       await fetchAlumnos();
@@ -127,7 +136,8 @@ const GestionAlumnos = () => {
       setAlumnoSeleccionado(null);
     } catch (err) {
       console.error("Error en CRUD alumnos:", err);
-      alert(`Error al guardar: ${err.message || "Error de servidor"}`);
+      // Mensaje modificado para ayudar al usuario a diagnosticar el problema de la inscripción
+      alert(`🔴 Error al guardar: ${err.message || "Error de servidor"}. Verifique que el servidor cree la inscripción/registro del curso.`);
     }
   };
 
@@ -135,13 +145,15 @@ const GestionAlumnos = () => {
   const handleEliminar = async (id) => {
     if (
       !window.confirm(
-        "¿Estás seguro de que quieres eliminar este alumno?"
+        "¿Estás seguro de que quieres eliminar este alumno y todos sus registros?"
       )
     ) {
       return;
     }
 
     try {
+      // Nota: El backend debe asegurarse de eliminar también las inscripciones
+      // y otros registros relacionados (ej. mediante ON DELETE CASCADE en la DB).
       await apiDelete(`/gestion/alumnos/${id}`);
       await fetchAlumnos();
       setAlumnoSeleccionado(null);
@@ -214,7 +226,8 @@ const GestionAlumnos = () => {
         <select
           name="materia_id"
           className="campo-texto"
-          value={formData.materia_id}
+          // Convertir el valor a string para que coincida con la opción
+          value={formData.materia_id.toString()} 
           onChange={handleInputChange}
         >
           {materiasDisponibles.map((materia) => (
@@ -227,7 +240,7 @@ const GestionAlumnos = () => {
 
       <button className="boton-volver" onClick={handleSubmitForm}>
         {accionActual === "agregar"
-          ? "Confirmar Agregar"
+          ? "Confirmar Agregar (Alumno + Inscripción)"
           : "Guardar Modificación"}
       </button>
       <button
