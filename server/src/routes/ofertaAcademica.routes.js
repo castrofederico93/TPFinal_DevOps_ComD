@@ -1,5 +1,7 @@
+// ofertaAcademica.routes.js
+
 import { Router } from "express";
-import prisma from "../db/prisma.js";
+import prisma from "../db/prisma.js"; // Asegúrate de que esta ruta sea correcta
 import { auth, allowRoles } from "../middlewares/auth.js";
 
 const router = Router();
@@ -10,7 +12,7 @@ const router = Router();
 router.use(auth, allowRoles("administrador", "preceptor"));
 
 // ===============================================
-// FUNCIONES AUXILIARES
+// FUNCIONES AUXILIARES (Común a varias rutas)
 // ===============================================
 
 function getValidDocenteId(idValue) {
@@ -83,6 +85,7 @@ async function getNextAlumnoId() {
 // 1. RUTAS DE OFERTA ACADÉMICA (MATERIAS / COMISIONES)
 // ===============================================
 
+// GET /
 router.get("/", async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw`
@@ -254,123 +257,127 @@ router.delete("/:id", async (req, res) => {
 // 2. RUTAS CRUD PARA ALUMNOS
 // =============================================
 
-
 // GET /alumnos
 router.get("/alumnos", async (_req, res) => {
-  try {
-    const alumnos = await prisma.alumnos.findMany({
-      select: {
-        id: true,
-        dni: true,
-        nombre: true,
-        apellido: true,
-        telefono: true,
-        email: true,
-        inscripciones: {
-          // Asumimos que la primera inscripción es la principal
-          orderBy: { fecha_insc: "asc" },
-          select: {
-            comisiones: {
-              select: {
-                // AÑADIDO: Obtenemos la letra de la comisión
-                letra: true,
-                materias: {
-                  select: { id: true, nombre: true },
+    try {
+        const alumnos = await prisma.alumnos.findMany({
+            select: {
+                id: true,
+                dni: true,
+                nombre: true,
+                apellido: true,
+                telefono: true,
+                email: true,
+                inscripciones: {
+                    orderBy: { fecha_insc: "asc" },
+                    select: {
+                        comisiones: {
+                            select: {
+                                letra: true,
+                                materias: {
+                                    select: { id: true, nombre: true },
+                                },
+                            },
+                        },
+                    },
                 },
-              },
             },
-          },
-        },
-      },
-    });
+        });
 
-    const alumnosConMateria = alumnos.map((alumno) => {
-      const primeraInscripcion = alumno.inscripciones[0];
-      // Acceder directamente al objeto comisiones que ya tiene la letra
-      const comisionData = primeraInscripcion?.comisiones || null; 
-      const materia = comisionData?.materias || null;
+        const alumnosConMateria = alumnos.map((alumno) => {
+            const primeraInscripcion = alumno.inscripciones[0];
+            const comisionData = primeraInscripcion?.comisiones || null;
+            const materia = comisionData?.materias || null;
 
-      return {
-        id: alumno.id,
-        dni: alumno.dni,
-        nombre: alumno.nombre,
-        apellido: alumno.apellido,
-        telefono: alumno.telefono,
-        email: alumno.email,
-        materia_id: materia ? materia.id : null,
-        nombre_materia: materia ? materia.nombre : "Sin Asignar",
-        // CORREGIDO: Incluir la letra de la comisión en la respuesta
-        nombre_comision: comisionData ? comisionData.letra : "Sin Asignar", 
-      };
-    });
+            return {
+                id: alumno.id,
+                dni: alumno.dni,
+                nombre: alumno.nombre,
+                apellido: alumno.apellido,
+                telefono: alumno.telefono,
+                email: alumno.email,
+                materia_id: materia ? materia.id : null,
+                nombre_materia: materia ? materia.nombre : "Sin Asignar",
+                nombre_comision: comisionData ? comisionData.letra : "Sin Asignar",
+            };
+        });
 
-    return res.json(alumnosConMateria);
-  } catch (error) {
-    console.error("Error al obtener alumnos:", error);
-    return res
-      .status(500)
-      .json({ error: "Error interno del servidor" });
-  }
+        return res.json(alumnosConMateria);
+    } catch (error) {
+        console.error("Error al obtener alumnos:", error);
+        return res
+            .status(500)
+            .json({ error: "Error interno del servidor" });
+    }
 });
 
-// POST /alumnos
+
+// POST /alumnos (Lógica de crear alumno y su inscripción - alumnosOfertaAcademica)
 router.post("/alumnos", async (req, res) => {
-  const { dni, nombre, apellido, telefono, email, materia_id } = req.body;
+    // 🎯 Esta función es la que pediste renombrar: alumnosOfertaAcademica
+    const { dni, nombre, apellido, email, telefono, materia_id } = req.body;
 
-  if (!dni || !nombre || !apellido || !materia_id) {
-    return res.status(400).json({
-      error: "Faltan datos obligatorios (DNI, Nombre, Apellido y Curso).",
-    });
-  }
-
-  try {
-    const newId = await getNextAlumnoId();
-
-    const materiaIdParsed = parseInt(materia_id, 10);
-
-    const comisionParaInscripcion = await prisma.comisiones.findFirst({
-      where: { materia_id: materiaIdParsed },
-      orderBy: { id: "asc" },
-    });
-
-    if (!comisionParaInscripcion) {
-      return res.status(400).json({
-        error: "No se encontró una comisión válida para la materia seleccionada.",
-      });
+    if (!dni || !nombre || !apellido || !materia_id) {
+        return res.status(400).json({
+            error: "Faltan datos obligatorios (DNI, Nombre, Apellido y Curso).",
+        });
     }
 
-    const nuevoAlumno = await prisma.alumnos.create({
-      data: {
-        id: newId,
-        dni,
-        nombre,
-        apellido,
-        telefono: telefono || null,
-        email: email || null,
-      },
-    });
+    try {
+        // 1. Obtener el próximo ID si el campo no es auto-incremental
+        const newId = await getNextAlumnoId();
 
-    await prisma.inscripciones.create({
-      data: {
-        alumno_id: nuevoAlumno.id,
-        comision_id: comisionParaInscripcion.id,
-        estado: "activa",
-        fecha_insc: new Date(),
-      },
-    });
+        // 2. Buscar una comisión por defecto para esa materia_id
+        const materiaIdParsed = parseInt(materia_id, 10);
+        const comision = await prisma.comisiones.findFirst({
+            where: { materia_id: materiaIdParsed },
+            select: { id: true },
+            orderBy: { id: "asc" },
+        });
 
-    return res.status(201).json({
-      ...nuevoAlumno,
-      materia_id: materiaIdParsed,
-    });
-  } catch (error) {
-    if (error.code === "P2002") {
-      return res.status(409).json({ error: "Ya existe un alumno con este DNI." });
+        if (!comision) {
+            return res.status(400).json({
+                error: "No se encontró una comisión para la materia seleccionada.",
+            });
+        }
+
+        // 3. Realiza la transacción (crear alumno y su inscripción) con nested write
+        const nuevoAlumno = await prisma.alumnos.create({
+            data: {
+                id: newId, // Asignación manual de ID (basado en tu router anterior)
+                dni,
+                nombre,
+                apellido,
+                email: email || null,
+                telefono: telefono || null,
+                materia_id: materiaIdParsed,
+                comision_id: comision.id,
+
+                // Crea la inscripción asociada
+                inscripciones: {
+                    create: {
+                        materia_id: materiaIdParsed,
+                        comision_id: comision.id,
+                        fecha_inscripcion: new Date(),
+                        estado: "activa",
+                    },
+                },
+            },
+        });
+
+        res.status(201).json({
+            ...nuevoAlumno,
+            materia_id: materiaIdParsed,
+        });
+    } catch (error) {
+        console.error("Error al crear alumno y/o inscripción:", error);
+        if (error.code === "P2002") {
+            return res.status(409).json({ error: "Ya existe un alumno con este DNI." });
+        }
+        res.status(500).json({ error: "Error de servidor al crear el alumno y su inscripción." });
     }
-    console.error("Error al crear alumno:", error);
-    return res.status(500).json({ error: "Error interno al crear el alumno." });
-  }
 });
+
 
 // PUT /alumnos/:id
 router.put("/alumnos/:id", async (req, res) => {
@@ -432,6 +439,9 @@ router.put("/alumnos/:id", async (req, res) => {
         error: "Alumno no encontrado para actualizar.",
       });
     }
+    if (error.code === "P2002") {
+        return res.status(409).json({ error: "Ya existe un alumno con este DNI." });
+    }
     console.error("Error al actualizar alumno:", error);
     return res
       .status(500)
@@ -444,6 +454,7 @@ router.delete("/alumnos/:id", async (req, res) => {
   const alumnoId = parseInt(req.params.id, 10);
 
   try {
+    // Transacción para eliminar dependencias antes de eliminar el alumno
     await prisma.$transaction([
       prisma.justificaciones.deleteMany({ where: { alumno_id: alumnoId } }),
       prisma.calificaciones.deleteMany({ where: { alumno_id: alumnoId } }),
@@ -463,6 +474,7 @@ router.delete("/alumnos/:id", async (req, res) => {
     });
   }
 });
+
 
 // =============================================
 // 3. RUTAS DE COMUNICACIONES / FILTROS
