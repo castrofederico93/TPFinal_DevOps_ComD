@@ -1,0 +1,57 @@
+name: CI/CD PP4_PFO
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  build-test-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Frontend: instalar dependencias y correr tests
+      - name: Instalar dependencias frontend
+        run: npm ci
+
+      - name: Correr tests frontend
+        run: npm test
+
+      # Login a Docker Hub (solo en push a main)
+      - name: Login en Docker Hub
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build + push imagen backend
+      - name: Build imagen backend
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-backend:latest ./server
+
+      - name: Push imagen backend
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-backend:latest
+
+      # Build + push imagen frontend
+      - name: Build imagen frontend
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-frontend:latest .
+
+      - name: Push imagen frontend
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-frontend:latest
