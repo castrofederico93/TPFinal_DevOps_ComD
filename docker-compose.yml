@@ -10,15 +10,17 @@ services:
       - "3307:3306"
     volumes:
       - dbdata:/var/lib/mysql
-      - ./db/init:/docker-entrypoint-initdb.d
+      - ./server/db/init:/docker-entrypoint-initdb.d
+    networks:
+      - app-net
 
   api:
     build:
-      context: .
+      context: ./server
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: mysql://app:app@db:3306/prisma_app
-      CORS_ORIGIN: http://localhost:5173
+      CORS_ORIGIN: http://localhost:8080
       JWT_SECRET: supersecret
       PORT: 3000
       DB_HOST: db
@@ -30,7 +32,23 @@ services:
     depends_on:
       - db
     volumes:
-      - ./uploads:/app/server/uploads
+      - ./server/uploads:/app/server/uploads
+    networks:
+      - app-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    networks:
+      - app-net
+
+networks:
+  app-net:
 
 volumes:
   dbdata:
