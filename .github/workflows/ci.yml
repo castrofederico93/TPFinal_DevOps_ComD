@@ -1,10 +1,10 @@
-name: CI/CD PP4_PFO
+name: CI/CD DevOps
 
 on:
   push:
-    branches: ["main", "develop"]
+    branches: ["main"]
   pull_request:
-    branches: ["main", "develop"]
+    branches: ["main"]
 
 jobs:
   build-test-and-push:
@@ -38,20 +38,20 @@ jobs:
       - name: Build imagen backend
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-backend:latest ./server
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/devops-backend:latest ./server
 
       - name: Push imagen backend
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-backend:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/devops-backend:latest
 
       # Build + push imagen frontend
       - name: Build imagen frontend
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-frontend:latest .
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/devops-frontend:latest .
 
       - name: Push imagen frontend
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pp4pfo-frontend:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/devops-frontend:latest
