@@ -25,17 +25,29 @@ const app = express();
 // =======================
 //  CORS
 // =======================
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+
+      if (allowedOrigins.length > 0) {
+        if (allowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error("Not allowed by CORS"));
+      }
+
+      return cb(null, true);
+    },
     credentials: true,
   })
 );
+
+app.options("*", cors());
+
 
 // =======================
 //  Middlewares básicos
