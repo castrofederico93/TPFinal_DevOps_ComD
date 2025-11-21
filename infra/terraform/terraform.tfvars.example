@@ -1,0 +1,6 @@
+dockerhub_username   = "tu_usuario_dockerhub"
+mysql_root_password  = "root"
+mysql_database       = "prisma_app"
+mysql_user           = "app"
+mysql_password       = "app"
+backend_port         = 3000
