@@ -9,6 +9,7 @@ Incluye:
   - Contenerización con **Docker** y **Docker Compose**.
   - Pipeline de **CI/CD** con **GitHub Actions** + **Docker Hub** + **Railway**.
   - **Infraestructura como Código** con **Terraform** (provider Docker).
+  - **Monitoreo** con **Prometheus + Grafana** y métricas expuestas en `/metrics`.
 
 ---
 
@@ -72,7 +73,7 @@ El objetivo es centralizar la gestión académica en un único sistema:
 
 ### 2.2. Backend (Node.js + Express)
 
-- `server/src/app.js`: configuración de Express y middlewares.
+- `server/src/app.js`: configuración de Express, middlewares generales y rutas principales.
 - `server/src/server.js`: arranque de la API.
 - `server/src/routes/*.routes.js`: rutas agrupadas por dominio:
   - `auth.routes.js`, `alumnos.routes.js`, `preceptores.routes.js`,
@@ -82,6 +83,7 @@ El objetivo es centralizar la gestión académica en un único sistema:
 - `server/src/services/*.service.js`: lógica de dominio reutilizable (alumnos, auth, userAccount).
 - `server/src/db/prisma.js`: instancia de `PrismaClient`.
 - `server/src/middlewares`: autenticación (`auth.js`, `auth.middleware.js`), subida de archivos (`uploadAvatar.js`).
+- `server/src/metrics/metrics.js`: definición de métricas Prometheus y middleware de medición.
 
 ### 2.3. Base de datos (MySQL)
 
@@ -145,6 +147,7 @@ Líneas de trabajo futuro:
 - Docker Hub (registro de imágenes).
 - Railway (despliegue en la nube).
 - Terraform (provider Docker) para IaC local.
+- Prometheus + Grafana para monitoreo.
 
 ---
 
@@ -161,11 +164,13 @@ cd TPFinal_DevOps_ComD
 
 ### 5.2. Ejecución con Docker Compose (recomendado)
 
-En la raíz del proyecto se encuentra `docker-compose.yml` con tres servicios:
+En la raíz del proyecto se encuentra `docker-compose.yml` con cinco servicios:
 
 - `db`: MySQL 8.4 con carga inicial desde `server/db/init/01_full.sql`.
 - `api`: backend Node.js (carpeta `server`).
 - `frontend`: aplicación React (raíz del proyecto).
+- `prometheus`: servidor de métricas Prometheus.
+- `grafana`: interfaz de visualización para dashboards de monitoreo.
 
 #### 5.2.1. Levantar el stack
 
@@ -180,12 +185,15 @@ Esto:
 - Construye la imagen del backend y del frontend.
 - Levanta la base de datos MySQL.
 - Ejecuta automáticamente los scripts de `server/db/init/` dentro del contenedor de MySQL.
+- Levanta Prometheus y Grafana conectados al backend.
 
 #### 5.2.2. Puertos por defecto
 
 - Backend (API): `http://localhost:3000`
 - Frontend: `http://localhost:8080`
 - MySQL: `localhost:3307` (host) → `3306` (contendor)
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3001`
 
 La API se expone bajo `/api/*`.  
 El frontend utiliza la API configurando `VITE_API_BASE` hacia `http://localhost:3000/api`.
@@ -375,11 +383,80 @@ Flujo completo:
 
 ---
 
-## 9. Infraestructura como Código (IaC) con Terraform
+## 9. Monitoreo: Prometheus + Grafana
+
+Para el punto de monitoreo del TP se implementó:
+
+- Exposición de métricas en formato Prometheus en el backend (`/metrics`), usando `prom-client`.
+- Scraping periódico de esas métricas con un contenedor Prometheus.
+- Visualización en tiempo real mediante Grafana.
+
+### 9.1. Métricas expuestas por el backend
+
+En `server/src/metrics/metrics.js` se definen:
+
+- Métricas estándar de Node.js (CPU, memoria, heap, GC, event loop, etc.) mediante `collectDefaultMetrics`.
+- Un **histograma de duración de requests HTTP**:
+
+  - Nombre: `http_request_duration_ms`
+  - Labels: `method`, `route`, `status_code`
+  - Buckets en milisegundos: `[50, 100, 200, 300, 400, 500, 1000, 2000]`
+
+El middleware `metricsMiddleware` mide todas las requests y el endpoint `/metrics` expone las métricas para Prometheus.
+
+### 9.2. Configuración de Prometheus
+
+Archivo: `infra/monitoring/prometheus.yml`
+
+```yaml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "pp4-backend"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:3000"]
+```
+
+- `api:3000` es el servicio del backend dentro de la red `app-net`.
+- Cada 15 segundos Prometheus lee las métricas de `/metrics`.
+
+### 9.3. Dashboards en Grafana
+
+Con todo el stack levantado (`docker compose up -d --build`):
+
+- Prometheus: `http://localhost:9090`  
+- Grafana: `http://localhost:3001`
+
+En Grafana:
+
+1. Se configura un **Data Source** Prometheus apuntando a `http://prometheus:9090`.
+2. Se crean dashboards con queries típicas, por ejemplo:
+   - Cantidad de requests por endpoint:
+     ```promql
+     http_request_duration_ms_count
+     ```
+   - Requests por segundo:
+     ```promql
+     rate(http_request_duration_ms_count[1m])
+     ```
+   - Latencia P95:
+     ```promql
+     histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le))
+     ```
+
+Esto permite monitorear el comportamiento del backend (latencias, volumen de requests, etc.) dentro del entorno de Docker Compose.
+
+> En Railway solo se despliega la API (no Prometheus ni Grafana), pero el endpoint `/metrics` queda disponible para un futuro monitoreo en la nube.
+
+---
+
+## 10. Infraestructura como Código (IaC) con Terraform
 
 Para el entorno local, se incluyó una definición de infraestructura basada en **Terraform** (provider Docker), que permite recrear de forma declarativa la red, la base de datos y el backend.
 
-### 9.1. Estructura
+### 10.1. Estructura
 
 Carpeta:
 
@@ -391,7 +468,7 @@ infra/
     terraform.tfvars.example
 ```
 
-### 9.2. Recursos definidos
+### 10.2. Recursos definidos
 
 En `main.tf` se declaran:
 
@@ -415,7 +492,7 @@ En `main.tf` se declaran:
   - Puerto publicado: `3000` en el host.
   - Conectado a la red `pp4_app_network`.
 
-### 9.3. Configuración de variables
+### 10.3. Configuración de variables
 
 En `variables.tf` se declaran las variables necesarias y sus valores por defecto.  
 Ejemplo de `terraform.tfvars.example`:
@@ -437,7 +514,7 @@ cp terraform.tfvars.example terraform.tfvars
 # editar terraform.tfvars con tus valores reales (usuario de Docker Hub, etc.)
 ```
 
-### 9.4. Comandos básicos
+### 10.4. Comandos básicos
 
 Requisitos:
 
@@ -469,7 +546,7 @@ Con esto, se demuestra el uso de **Infraestructura como Código (IaC)** para des
 
 ---
 
-## 10. Conclusión
+## 11. Conclusión
 
 Este proyecto combina:
 
@@ -477,5 +554,6 @@ Este proyecto combina:
 - Contenerización con Docker y orquestación con Docker Compose.
 - Pipeline de CI/CD con GitHub Actions, Docker Hub y Railway.
 - Infraestructura como Código con Terraform (provider Docker).
+- Monitoreo de la API con métricas Prometheus y visualización en Grafana.
 
-Todo esto se integra como **Trabajo Práctico Integrador de DevOps**, cubriendo desarrollo, pruebas automatizadas, build de imágenes, despliegue automatizado en la nube y definición declarativa de la infraestructura.
+Todo esto se integra como **Trabajo Práctico Integrador de DevOps**, cubriendo desarrollo, pruebas automatizadas, build de imágenes, despliegue automatizado en la nube, definición declarativa de la infraestructura y monitoreo del sistema.

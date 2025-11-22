@@ -1,8 +1,13 @@
-// server/src/app.js
 import express from "express";
 import morgan from "morgan";
 import cors from "cors";
 import path from "node:path";
+
+// Métricas Prometheus
+import {
+  metricsMiddleware,
+  metricsHandler,
+} from "./metrics/metrics.js";
 
 // Rutas principales
 import authRoutes from "./routes/auth.routes.js";
@@ -48,7 +53,6 @@ app.use(
 
 app.options("*", cors());
 
-
 // =======================
 //  Middlewares básicos
 // =======================
@@ -58,14 +62,22 @@ app.use(morgan("dev"));
 app.use(express.static("public"));
 app.use("/uploads", express.static(path.resolve("uploads")));
 
-
-// === AGREGAR ESTO PARA EVITAR EL 304 (CACHÉ) ===
+// === Evitar 304 (cache) ===
 app.use((req, res, next) => {
-  res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-  res.header('Expires', '-1');
-  res.header('Pragma', 'no-cache');
+  res.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+  res.header("Expires", "-1");
+  res.header("Pragma", "no-cache");
   next();
 });
+
+// =======================
+//  Métricas Prometheus
+// =======================
+// Middleware que mide la duración de todas las requests
+app.use(metricsMiddleware);
+
+// Endpoint de métricas para Prometheus
+app.get("/metrics", metricsHandler);
 
 // =======================
 //  Healthcheck
@@ -103,7 +115,6 @@ app.use("/api/gestion", ofertaAcademicaRoutes);
 
 // Mantenemos esta ruta por si alguna parte del frontend la usa específicamente
 app.use("/api/ofertaAcademica", ofertaAcademicaRoutes);
-
 
 // =======================
 //  404 para /api
