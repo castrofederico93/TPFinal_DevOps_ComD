@@ -330,30 +330,22 @@ El workflow `CI/CD DevOps` se ejecuta en:
 - `push` a la rama `main`.
 - `pull_request` hacia `main`.
 
-Pasos principales:
+Actualmente está dividido en tres *jobs* encadenados:
 
-1. **Checkout y Node.js**
-   - `actions/checkout@v4`.
-   - `actions/setup-node@v4` con Node 20.
+1. **Test frontend**  
+   - Checkout del código.  
+   - Configuración de Node 20.  
+   - `npm ci`  
+   - `npm test`
 
-2. **CI (tests de frontend)**
-   - Instalación de dependencias en la raíz:
-     ```bash
-     npm ci
-     ```
-   - Ejecución de pruebas:
-     ```bash
-     npm test
-     ```
+2. **Build & push Docker images** (solo en `push` a `main`)  
+   - Login en Docker Hub con `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`.  
+   - Build y push de `devops-backend:latest`.  
+   - Build y push de `devops-frontend:latest`.
 
-3. **Build y push de imágenes Docker (solo en push a `main`)**
-   - Login a Docker Hub usando `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN` desde **GitHub Secrets**.
-   - **Backend**:
-     - Build: `docker build -t $DOCKERHUB_USERNAME/devops-backend:latest ./server`
-     - Push: `docker push $DOCKERHUB_USERNAME/devops-backend:latest`
-   - **Frontend**:
-     - Build: `docker build -t $DOCKERHUB_USERNAME/devops-frontend:latest .`
-     - Push: `docker push $DOCKERHUB_USERNAME/devops-frontend:latest`
+3. **Deploy (Railway auto)** (solo en `push` a `main`)  
+   - Job informativo que marca el final del pipeline.  
+   - El despliegue real lo realiza Railway al detectar el nuevo commit en `main`.
 
 De esta forma:
 
